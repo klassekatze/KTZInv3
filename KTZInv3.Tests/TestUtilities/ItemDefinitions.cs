@@ -95,6 +95,29 @@ namespace KTZInv3.Tests.TestUtilities
             catch (System.Reflection.ReflectionTypeLoadException e) { return e.Types.Where(t => t != null); }
         }
 
+        /// <summary>
+        /// Registers a single physical item definition (used by the blueprint
+        /// factory for item subtypes not in the built-in set). Idempotent.
+        /// </summary>
+        public static void RegisterItem(string typeId, string subtypeId, float volume, float mass, MyFixedPoint maxStack)
+        {
+            EnsureRegistered();
+            var def = new MyPhysicalItemDefinition
+            {
+                Id = new MyDefinitionId(MyObjectBuilderType.Parse(typeId), subtypeId),
+                Volume = volume,
+                Mass = mass,
+                MaxStackAmount = maxStack,
+                Enabled = true,
+                Public = true,
+            };
+            lock (_lock)
+            {
+                var dict = GetDefinitionsById((MyDefinitionManager)MyDefinitionManagerBase.Static);
+                dict[def.Id] = def;
+            }
+        }
+
         static List<MyDefinitionBase> BuildDefinitions()
         {
             var list = new List<MyDefinitionBase>();

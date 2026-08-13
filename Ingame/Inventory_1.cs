@@ -418,7 +418,9 @@ namespace IngameScript
 								}
 								else if (ltok.StartsWith("p"))
 								{
-									var ap = tok.Substring(1);
+									// use ltok (bracket-stripped, lowercased) — tok may still
+									// carry the [ ] brackets, which would break the digit check
+									var ap = ltok.Substring(1);
 									if (ap == "max") priority = int.MinValue;
 									else if (ap == "min") priority = int.MaxValue;
 									else if (ap.All(char.IsDigit))

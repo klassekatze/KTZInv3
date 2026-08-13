@@ -45,6 +45,14 @@ namespace KTZInv3.Tests.TestUtilities
             return sum;
         }
 
+        /// <summary>Sum of ALL items in the inventory, across all types.</summary>
+        public MyFixedPoint TotalAmount()
+        {
+            MyFixedPoint sum = 0;
+            foreach (var it in _items) sum += it.Amount;
+            return sum;
+        }
+
         public int StackCount => _items.Count;
 
         public void AddItem(MyItemType type, MyFixedPoint amount)

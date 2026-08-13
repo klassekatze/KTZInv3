@@ -4,3 +4,5 @@ obj/
 *.mdk.local.ini
 # MDK packer output (deployed script)
 Ingame/Scripts/
+# Space Engineers blueprint/save files - large binary XML, never committed
+*.sbc
