@@ -9,15 +9,11 @@ namespace IngameScript
 {
 	public partial class Program : MyGridProgram
 	{
-		// bapp is kept: it is used by Logging.cs and Inventory_1.cs (genstatus),
-		// NOT part of the Profiler system.
-		static void bapp(StringBuilder b, params object[] args)
-		{
-			foreach (object a in args)
-			{
-				b.Append(a.ToString());
-			}
-		}
+		// bapp REMOVED: it was a script-defined method with a params array and a
+		// foreach, so every call got the rewriter's injected wrap plus per-arg
+		// CountInstructions inside the loop. All call sites now use direct
+		// StringBuilder.Append chains (straight-line game API calls, zero
+		// injected instrumentation).
 
 		// ============================================================================
 		// Profiler system DISABLED (redundant - superseded by the Diag seam,

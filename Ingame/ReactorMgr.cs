@@ -35,18 +35,24 @@ namespace IngameScript
 				totalFuel = 0;
 				fuelType = null;
 				fuelByType.Clear();
-				List<MyFixedPoint> fuelCounts = new List<MyFixedPoint>();
+				int n = Program.reactors.Count;
+				// per-reactor fuel state, parallel to Program.reactors
+				List<MyFixedPoint> fuelCounts = new List<MyFixedPoint>(n);
+				List<MyItemType> fuelTypes = new List<MyItemType>(n);
+				List<bool> hasFuel = new List<bool>(n);
 
-				for (int i = 0; i < Program.reactors.Count; i++)
+				for (int i = 0; i < n; i++)
 				{
 					var inv = Program.reactors[i].GetInventory();
 					MyInventoryItem? itm = inv.GetItemAt(0);
 
 					if (itm.HasValue)
 					{
-						if (fuelType == null) fuelType = itm.Value.Type; // Store the exact type of fuel
-						totalFuel += itm.Value.Amount;
 						fuelCounts.Add(itm.Value.Amount);
+						fuelTypes.Add(itm.Value.Type);
+						hasFuel.Add(true);
+						totalFuel += itm.Value.Amount;
+						if (fuelType == null) fuelType = itm.Value.Type; // dominant fuel fallback: first seen
 
 						// per-type totals for the status display: sum the slot-0
 						// fuel across reactors (a reactor only ever holds one
@@ -59,65 +65,106 @@ namespace IngameScript
 					{
 						// CRITICAL: Add 0 so the fuelCounts index still perfectly matches Program.reactors[i]
 						fuelCounts.Add(0);
+						fuelTypes.Add(default(MyItemType));
+						hasFuel.Add(false);
 					}
 				}
 
-				// 2. Rebalance Logic
-				// Only proceed if we have at least 2 reactors, some fuel exists, and we know the fuel type
-				if (Program.reactors.Count > 1 && totalFuel > 0 && fuelType.HasValue)
+				// dominant fuel type = the one with the most fuel total; exposed
+				// as fuelType/totalFuel for the assembler low-fuel checks
+				// (reprioritize fuel jobs / don't disassemble when the grid's
+				// primary fuel runs low)
 				{
-					MyFixedPoint average = (MyFixedPoint)((double)totalFuel / Program.reactors.Count);
-
-					// Define what "significantly less" means. 
-					// If a reactor is within +/- 5 of the average, we leave it alone.
-					MyFixedPoint tolerance = REACTOR_BALANCING_MARGIN;
-
-					for (int i = 0; i < Program.reactors.Count; i++)
+					MyFixedPoint dominantAmt = 0;
+					foreach (var kvp in fuelByType)
 					{
-						// Is this reactor significantly BELOW the average? (A "Receiver")
-						if (fuelCounts[i] < (average - tolerance) || fuelCounts[i] < (MyFixedPoint)0.01d)
+						if (kvp.Value > dominantAmt)
 						{
-							MyFixedPoint amountNeeded = average - fuelCounts[i];
-
-							// Find other reactors that are significantly ABOVE the average (The "Donors")
-							for (int j = 0; j < Program.reactors.Count; j++)
-							{
-								if (fuelCounts[j] > (average + tolerance))
-								{
-									MyFixedPoint amountAvailable = fuelCounts[j] - average;
-
-									// Transfer the smaller amount between what the receiver needs and the donor can spare
-									MyFixedPoint transferAmount = MyFixedPoint.Min(amountNeeded, amountAvailable);
-
-									if (transferAmount > 0)
-									{
-										var donorInv = Program.reactors[j].GetInventory();
-										var receiverInv = Program.reactors[i].GetInventory();
-
-										// Use FindItem instead of GetItemAt(0) on the donor to guarantee we grab the uranium, 
-										// just in case they have an unpulled empty casing or trash in slot 0
-										MyInventoryItem? donorItem = donorInv.FindItem(fuelType.Value);
-
-										if (donorItem.HasValue)
-										{
-											donorInv.TransferItemTo(receiverInv, donorItem.Value, transferAmount);
-
-											// Update our local counts so we don't over-transfer in this same tick
-											fuelCounts[j] -= transferAmount;
-											fuelCounts[i] += transferAmount;
-											amountNeeded -= transferAmount;
-										}
-									}
-								}
-
-								// If the receiver is now satisfied, break out of the donor loop to save performance
-								if (amountNeeded <= 0) break;
-							}
+							dominantAmt = kvp.Value;
+							fuelType = kvp.Key;
 						}
 					}
+					totalFuel = dominantAmt;
 				}
 
-				/*MyItemType fuelType = new MyItemType();
+				// 2. Rebalance Logic - grouped by fuel type. A reactor only ever
+				// holds one fuel type in slot 0, but different reactors may burn
+				// different fuels (SDX2: UraniumItem, UraniumB, sdx_itemReactorFuel),
+				// so only reactors sharing a fuel type are balanced against each
+				// other. Empty reactors join the group only when exactly one fuel
+				// type exists on the grid (that's the empty-reactor alignment fix);
+				// with mixed fuels their fuel type is unknowable, so they are left
+				// to the conveyor/priming systems.
+				if (n > 1 && totalFuel > 0 && fuelType.HasValue)
+				{
+					// group reactor indices by their slot-0 fuel type
+					Dictionary<MyItemType, List<int>> groups = new Dictionary<MyItemType, List<int>>();
+					bool singleFuelType = fuelByType.Count == 1;
+					for (int i = 0; i < n; i++)
+					{
+						MyItemType t = hasFuel[i] ? fuelTypes[i] : fuelType.Value;
+						if (!hasFuel[i] && !singleFuelType) continue; // unknown fuel with mixed grid
+						if (!groups.ContainsKey(t)) groups[t] = new List<int>();
+						groups[t].Add(i);
+					}
+
+					foreach (var g in groups)
+					{
+						var type = g.Key;
+						var idxs = g.Value;
+						if (idxs.Count < 2) continue;
+
+						MyFixedPoint groupTotal = 0;
+						foreach (var i in idxs) groupTotal += fuelCounts[i];
+						MyFixedPoint average = (MyFixedPoint)((double)groupTotal / idxs.Count);
+						MyFixedPoint tolerance = REACTOR_BALANCING_MARGIN;
+
+						// receivers: fuel significantly below the group average
+						foreach (var i in idxs)
+						{
+							if (fuelCounts[i] < (average - tolerance) || fuelCounts[i] < (MyFixedPoint)0.01d)
+							{
+								MyFixedPoint amountNeeded = average - fuelCounts[i];
+
+								// donors: same fuel type, significantly above average
+								foreach (var j in idxs)
+								{
+									if (i == j) continue;
+									if (fuelCounts[j] > (average + tolerance))
+									{
+										MyFixedPoint amountAvailable = fuelCounts[j] - average;
+										MyFixedPoint transferAmount = MyFixedPoint.Min(amountNeeded, amountAvailable);
+
+										if (transferAmount > 0)
+										{
+											var donorInv = Program.reactors[j].GetInventory();
+											var receiverInv = Program.reactors[i].GetInventory();
+
+											// FindItem instead of GetItemAt(0) on the donor to
+											// guarantee we grab the right fuel, just in case
+											// they have an unpulled empty casing or trash in slot 0
+											MyInventoryItem? donorItem = donorInv.FindItem(type);
+
+											if (donorItem.HasValue)
+											{
+												donorInv.TransferItemTo(receiverInv, donorItem.Value, transferAmount);
+
+												// Update our local counts so we don't over-transfer in this same tick
+												fuelCounts[j] -= transferAmount;
+												fuelCounts[i] += transferAmount;
+												amountNeeded -= transferAmount;
+											}
+										}
+									}
+									if (amountNeeded <= 0) break;
+								}
+								if (amountNeeded <= 0) break;
+							}
+							}
+							}
+							}
+
+							/*MyItemType fuelType = new MyItemType();
 				MyFixedPoint fuelCount = 0;
 				List<MyFixedPoint> fuelCounts = new List<MyFixedPoint>();
 				for (int i = 0; i < Program.reactors.Count; i++)

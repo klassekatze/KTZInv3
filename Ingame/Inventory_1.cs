@@ -859,7 +859,7 @@ namespace IngameScript
 				if (amount > 0)
 				{
 					StringBuilder err = new StringBuilder();
-					bapp(err, "Warning: failed to expel ", type.SubtypeId, " from \"", origin.lastN, "\": nowhere else to store?");
+					err.Append("Warning: failed to expel ").Append(type.SubtypeId).Append(" from \"").Append(origin.lastN).Append("\": nowhere else to store?");
 					gInv.rerrlog(err.ToString());
 				}
 				return amount;
@@ -888,7 +888,7 @@ namespace IngameScript
 				{
 					conveyor_error = false;
 					StringBuilder err = new StringBuilder();
-					bapp(err, "Warning: xfer fail: no conveyor \"", origin.lastN, "\" > \"", dest.lastN + "\"");
+					err.Append("Warning: xfer fail: no conveyor \"").Append(origin.lastN).Append("\" > \"").Append(dest.lastN).Append("\"");
 					gInv.rerrlog(err.ToString());
 				}
 				if (sa != amount)

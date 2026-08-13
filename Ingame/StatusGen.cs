@@ -17,6 +17,13 @@ namespace IngameScript
 		// ReactorMgr.fuelByType) and Inventory exposes the fields it reads.
 		// Runs every 5 ticks (12x/sec) like the old genstatus did, and only
 		// writes the LCD when the text actually changed.
+		//
+		// NOTE: text is built with StringBuilder.Append chains, NOT the old bapp
+		// helper: bapp was a script-defined method with a foreach over a params
+		// array, so every call got the rewriter's injected wrap (EnterMethod/
+		// CountInstructions/ExitMethod) plus per-arg CountInstructions inside
+		// the loop. An Append chain is straight-line method calls on a game API
+		// type - zero injected instrumentation.
 		void genStatus()
 		{
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.StatusGen) : false; }
@@ -32,45 +39,51 @@ namespace IngameScript
 				var lbl = inv.statlbl[(int)inv.cstat];
 				if (inv.cstat >= Inventory.STATUS.MANIFESTS && inv.cstat != Inventory.STATUS.IDLE)
 				{
-					bapp(status, "Working ", inv.nextC + 1, "/", inv.containers.Count, "\n");
-					if (inv.nextC < inv.containers.Count) bapp(status, inv.containers[inv.nextC].CustomName, "\n");
+					status.Append("Working ").Append(inv.nextC + 1).Append("/").Append(inv.containers.Count).Append("\n");
+					if (inv.nextC < inv.containers.Count) status.Append(inv.containers[inv.nextC].CustomName).Append("\n");
 				}
-				bapp(status, lbl, "\n");
-				bapp(status, Inventory.transfer_count + " xfer ops this runtime\n\n");
+				status.Append(lbl).Append("\n");
+				status.Append(Inventory.transfer_count).Append(" xfer ops this runtime\n\n");
 
 				// assembler manager state: unmanaged if no KTZ Autocrafting LCD
 				// (the manager update is LCD-gated), otherwise cached counts.
 				if (autocraftingLCD == null)
 				{
-					bapp(status, "Assemblers unmanaged, no KTZ Autocrafting LCD\n");
+					status.Append("Assemblers unmanaged, no KTZ Autocrafting LCD\n");
 				}
 				else
 				{
-					bapp(status, "Assemblers: ", gAssemblerMgr.asmWorking, " working, ", gAssemblerMgr.asmStalled, " stalled, ", gAssemblerMgr.asmIdle, " idle\n");
+					status.Append("Assemblers: ").Append(gAssemblerMgr.asmWorking).Append(" working, ")
+						.Append(gAssemblerMgr.asmStalled).Append(" stalled, ")
+						.Append(gAssemblerMgr.asmIdle).Append(" idle\n");
 				}
-				bapp(status, "updateCountsAsmDisasmChange: " + gAssemblerMgr.updateCountsAsmDisasmChange + "\n");
-				bapp(status, "should_asm: " + gAssemblerMgr.should_asm + "\n");
-				if (gAssemblerMgr.asm_rsn != "") bapp(status, gAssemblerMgr.asm_rsn + "\n");
-				bapp(status, "should_disasm: " + gAssemblerMgr.should_disasm + "\n");
-				if (gAssemblerMgr.disasm_rsn != "") bapp(status, gAssemblerMgr.disasm_rsn + "\n");
 
-				// refineries: working state based (cached in the manager)
-				bapp(status, "Refineries: ", gRefineryMgr.refWorking, " working, ", gRefineryMgr.refIdle, " idle\n");
+				// refineries and reactor fuel are the immediately relevant ops
+				// state; the asm/disasm counters below are more esoteric debug
+				status.Append("Refineries: ").Append(gRefineryMgr.refWorking).Append(" working, ")
+					.Append(gRefineryMgr.refIdle).Append(" idle\n");
 
 				// reactor fuel, per type, with /quota when a nonzero autocraft
 				// quota exists for that subtype
 				foreach (var kvp in gReactorMgr.fuelByType)
 				{
-					bapp(status, "Fuel: ", kvp.Key.SubtypeId, " ", kvp.Value);
+					status.Append("Fuel: ").Append(kvp.Key.SubtypeId).Append(" ")
+						.Append(((double)kvp.Value).ToString("0.0"));
 					int quota = 0;
 					if (Autocraft.quotas.TryGetValue(kvp.Key.SubtypeId, out quota) && quota != 0)
 					{
-						bapp(status, "/", quota);
+						status.Append("/").Append(quota);
 					}
-					bapp(status, "\n");
+					status.Append("\n");
 				}
 
-				foreach (var l in inv.errors) bapp(status, l, "\n");
+				status.Append("updateCountsAsmDisasmChange: ").Append(gAssemblerMgr.updateCountsAsmDisasmChange).Append("\n");
+				status.Append("should_asm: ").Append(gAssemblerMgr.should_asm).Append("\n");
+				if (gAssemblerMgr.asm_rsn != "") status.Append(gAssemblerMgr.asm_rsn).Append("\n");
+				status.Append("should_disasm: ").Append(gAssemblerMgr.should_disasm).Append("\n");
+				if (gAssemblerMgr.disasm_rsn != "") status.Append(gAssemblerMgr.disasm_rsn).Append("\n");
+
+				foreach (var l in inv.errors) status.Append(l).Append("\n");
 				var s = status.ToString();
 				if (s != inv.lastStatus)
 				{

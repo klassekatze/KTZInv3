@@ -113,7 +113,7 @@ namespace IngameScript
 				foreach (var m in loggedMessages)
 				{
 					b.Append(m.msg);
-					if (m.c > 1) bapp(b," (" ,m.c ,")");
+					if (m.c > 1) b.Append(" (").Append(m.c).Append(")");
 					b.Append("\n");
 				}
 				string o = b.ToString();
@@ -129,7 +129,7 @@ namespace IngameScript
 				foreach (var m in superLoggedMessages)
 				{
 					b.Append(m.msg);
-					if (m.c > 1) bapp(b, " (", m.c, ")");
+					if (m.c > 1) b.Append(" (").Append(m.c).Append(")");
 					b.Append("\n");
 				}
 				string o = b.ToString();
