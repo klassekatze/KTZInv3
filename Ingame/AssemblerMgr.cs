@@ -3,7 +3,6 @@ using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics.Eventing.Reader;
 using VRage;
 using VRage.Game;
 using VRage.Game.ModAPI.Ingame;

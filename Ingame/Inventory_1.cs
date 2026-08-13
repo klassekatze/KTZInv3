@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Mail;
-using System.Security.Authentication.ExtendedProtection.Configuration;
 using System.Text;
 using System.Threading.Tasks;
 using VRage;
@@ -14,7 +13,7 @@ namespace IngameScript
 {
 	partial class Program : MyGridProgram
 	{
-		class Inventory
+		public class Inventory
 		{
 			public static InventoryManifest globalManifest = new InventoryManifest();
 			public static Dictionary<string, MyFixedPoint> nonFractionalMinMarginByCat = new Dictionary<string, MyFixedPoint>();

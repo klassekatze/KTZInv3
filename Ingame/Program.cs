@@ -10,7 +10,7 @@ using VRage.Game.ModAPI.Ingame;
 
 namespace IngameScript
 { 
-	partial class Program : MyGridProgram
+	public partial class Program : MyGridProgram
 	{
 		#region mdk preserve
 		static public double maxMsPerSETickReal = 0.05;

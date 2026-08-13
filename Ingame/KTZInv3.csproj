@@ -1,14 +1,17 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netframework48</TargetFramework>
+    <TargetFrameworks>netframework48;netstandard2.0</TargetFrameworks>
     <RootNamespace>IngameScript</RootNamespace>
     <LangVersion>6</LangVersion>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <Configurations>Release;Debug</Configurations>
     <Platforms>x64</Platforms>
   </PropertyGroup>
-  <ItemGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netframework48'">
+    <MdkBuildConfiguration>Release</MdkBuildConfiguration>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'netframework48'">
     <PackageReference Include="Mal.Mdk2.PbAnalyzers" Version="2.2.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -17,6 +20,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Mal.Mdk2.References" Version="2.2.9" />
   </ItemGroup>
   <ItemGroup>
