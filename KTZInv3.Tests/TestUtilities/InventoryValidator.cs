@@ -211,7 +211,10 @@ namespace KTZInv3.Tests.TestUtilities
                 if (lr.Length != 2) continue;
                 var ids = lr[0].Split('/');
                 if (ids.Length != 2) continue;
-                try { list.Add(new MyItemType(ids[0], ids[1])); } catch { }
+                // the script parses stocktargets as getType("MyObjectBuilder_" + ids[0], ids[1])
+                // (bpprefix is added, see Inventory_1.updateP) — mirror it exactly
+                var typeId = ids[0].StartsWith("MyObjectBuilder_") ? ids[0] : "MyObjectBuilder_" + ids[0];
+                try { list.Add(new MyItemType(typeId, ids[1])); } catch { }
             }
             return list;
         }

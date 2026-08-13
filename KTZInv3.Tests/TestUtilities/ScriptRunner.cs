@@ -39,10 +39,10 @@ namespace KTZInv3.Tests.TestUtilities
         }
 
         /// <summary>
-        /// Runs Main until gInv.updateCounter &gt;= target (or MaxTicks is hit).
+        /// Runs Main until gInv.updateCounter &gt;= target (or maxTicks is hit).
         /// Returns true if the counter was reached.
         /// </summary>
-        public bool RunUntilUpdateCounter(int target)
+        public bool RunUntilUpdateCounter(int target, int maxTicks = MaxTicks)
         {
             Program = Gateway.CreateProgram()
                 .WithGridTerminalSystem(Gts)
@@ -51,7 +51,7 @@ namespace KTZInv3.Tests.TestUtilities
                 .Build();
 
             TicksUsed = 0;
-            while (TicksUsed < MaxTicks)
+            while (TicksUsed < maxTicks)
             {
                 Program.Main("", UpdateType.Update1);
                 TicksUsed++;

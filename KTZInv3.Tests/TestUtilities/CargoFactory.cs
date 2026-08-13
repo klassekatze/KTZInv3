@@ -30,7 +30,18 @@ namespace KTZInv3.Tests.TestUtilities
         /// <param name="items">Initial contents as (itemType, amount) pairs.</param>
         public static CargoMock CreateCargo(string name, MyFixedPoint maxVolume, params (MyItemType type, MyFixedPoint amount)[] items)
         {
-            return CreateCargo(name, maxVolume, null, items);
+            return CreateCargo(name, maxVolume, null, null, items);
+        }
+
+        /// <summary>
+        /// Creates a fake cargo container block with a real read/write CustomData
+        /// (used by special containers — the script parses stocktargets from it
+        /// AND writes to it: the ISYCOMPAT header prefix and the empty-special
+        /// auto-generated manifest).
+        /// </summary>
+        public static CargoMock CreateCargo(string name, string customData, MyFixedPoint maxVolume, params (MyItemType type, MyFixedPoint amount)[] items)
+        {
+            return CreateCargo(name, maxVolume, null, customData, items);
         }
 
         /// <summary>
@@ -38,6 +49,11 @@ namespace KTZInv3.Tests.TestUtilities
         /// from <see cref="CreateGrid"/> so it matches Program.Me's grid).
         /// </summary>
         public static CargoMock CreateCargo(string name, MyFixedPoint maxVolume, IMyCubeGrid grid, params (MyItemType type, MyFixedPoint amount)[] items)
+        {
+            return CreateCargo(name, maxVolume, grid, null, items);
+        }
+
+        static CargoMock CreateCargo(string name, MyFixedPoint maxVolume, IMyCubeGrid grid, string customData, params (MyItemType type, MyFixedPoint amount)[] items)
         {
             ItemDefinitions.EnsureRegistered();
 
@@ -51,9 +67,15 @@ namespace KTZInv3.Tests.TestUtilities
             foreach (var (type, amount) in items)
                 inventory.AddItem(type, amount);
 
+            // real read/write CustomData: a captured variable behind the getter
+            // AND a setter that stores into it (the script writes CustomData for
+            // special containers — the ISYCOMPAT prefix and auto-generated
+            // manifest — so the fake must accept those writes and return them).
+            var customDataValue = customData ?? "";
             var block = A.Fake<IMyTerminalBlock>();
             A.CallTo(() => block.CustomName).Returns(name);
-            A.CallTo(() => block.CustomData).Returns("");
+            A.CallTo(() => block.CustomData).ReturnsLazily(() => customDataValue);
+            A.CallToSet(() => block.CustomData).Invokes((string v) => customDataValue = v);
             A.CallTo(() => block.CubeGrid).Returns(grid);
             A.CallTo(() => block.DefinitionDisplayNameText).Returns("Large Container");
             A.CallTo(() => block.InventoryCount).Returns(1);
