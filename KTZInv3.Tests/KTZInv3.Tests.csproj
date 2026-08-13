@@ -21,6 +21,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../Ingame/KTZInv3.csproj" />
+    <!-- The Ingame project targets net48 so MDK deploys the script under its
+         plain name (a multi-targeted project would deploy as
+         "KTZInv3(netframework48)"), and a net48 project cannot be referenced
+         from net10.0. Instead we compile the same source files directly into
+         this assembly — the UnitTestExample pattern. Game DLL references come
+         from Mal.Mdk2.References above. -->
+    <Compile Include="../Ingame/*.cs" Link="Ingame/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
