@@ -157,6 +157,50 @@ namespace CompilerProbe
                  "    public void Main(string argument)\n    {\n" +
                  "        TripGuard();\n" +
                  "    }\n"),
+                // ---- post-review: item-info cache + BPLearn compaction whitelist ----
+                ("iteminfo_cache",
+                 
+                 "    static Dictionary<MyItemType, MyItemInfo> itemInfoCache = new Dictionary<MyItemType, MyItemInfo>();\n" +
+                 "    static MyItemInfo getItemInfo(MyItemType t)\n" +
+                 "    {\n" +
+                 "        MyItemInfo nfo;\n" +
+                 "        if (itemInfoCache.TryGetValue(t, out nfo)) return nfo;\n" +
+                 "        nfo = t.GetItemInfo();\n" +
+                 "        itemInfoCache[t] = nfo;\n" +
+                 "        return nfo;\n" +
+                 "    }\n" +
+                 "    public void Main(string argument)\n    {\n" +
+                 "        var nfo = getItemInfo(new MyItemType(\"MyObjectBuilder_Component\", \"SteelPlate\"));\n" +
+                 "        var v = nfo.Volume;\n" +
+                 "    }\n"),
+                ("bplearn_compact",
+                 
+                 "    static MyFixedPoint SumCompact(List<MyInventoryItem> items)\n" +
+                 "    {\n" +
+                 "        List<MyItemType> types = new List<MyItemType>();\n" +
+                 "        List<MyInventoryItem> itemsCompact = new List<MyInventoryItem>();\n" +
+                 "        Dictionary<MyItemType, MyFixedPoint> sums = new Dictionary<MyItemType, MyFixedPoint>();\n" +
+                 "        Dictionary<MyItemType, uint> firstIds = new Dictionary<MyItemType, uint>();\n" +
+                 "        foreach (var i in items)\n" +
+                 "        {\n" +
+                 "            var t = i.Type;\n" +
+                 "            MyFixedPoint cur;\n" +
+                 "            if (sums.TryGetValue(t, out cur)) sums[t] = cur + i.Amount;\n" +
+                 "            else { types.Add(t); sums[t] = i.Amount; firstIds[t] = i.ItemId; }\n" +
+                 "        }\n" +
+                 "        MyFixedPoint total = 0;\n" +
+                 "        foreach (var t in types)\n" +
+                 "        {\n" +
+                 "            var c = sums[t];\n" +
+                 "            if (c > 0) itemsCompact.Add(new MyInventoryItem(t, firstIds[t], c));\n" +
+                 "        }\n" +
+                 "        foreach (var ic in itemsCompact) total += ic.Amount;\n" +
+                 "        return total;\n" +
+                 "    }\n" +
+                 "    public void Main(string argument)\n    {\n" +
+                 "        var items = new List<MyInventoryItem>();\n" +
+                 "        var total = SumCompact(items);\n" +
+                 "    }\n"),
             };
 
             foreach (var (name, body) in scripts)
@@ -193,7 +237,8 @@ namespace CompilerProbe
             compiler.AddImplicitInGameNamespacesFromTypes(
                 typeof(Sandbox.ModAPI.Ingame.IMyGridTerminalSystem),
                 typeof(VRage.Game.ModAPI.Ingame.IMyEntity),
-                typeof(VRage.Game.ModAPI.Ingame.Utilities.MyIni));
+                typeof(VRage.Game.ModAPI.Ingame.Utilities.MyIni),
+                typeof(VRage.MyFixedPoint));   // VRage namespace (MyFixedPoint etc.)
 
             // the probe assembly must be registered before its types can be whitelisted
             compiler.AddReferencedAssemblies(typeof(StopwatchProbe).Assembly.Location);
@@ -208,8 +253,17 @@ namespace CompilerProbe
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(System.ComponentModel.INotifyPropertyChanged)); // wrapper aliases
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(System.Text.StringBuilder));   // wrapper using
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(System.Collections.IEnumerable)); // wrapper using
+                batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(System.Collections.Generic.List<>));   // Dictionary<,>/List<> etc.
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(Sandbox.ModAPI.Ingame.IMyTerminalBlock));   // MyGridProgram etc.
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(VRage.Game.ModAPI.Ingame.IMyEntity));
+                batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(VRage.Game.MyDefinitionId));   // VRage.Game: MyItemType/MyItemInfo/MyItemId/MyFixedPoint etc.
+                batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(VRage.MyFixedPoint));   // VRage namespace
+                // GetItemInfo's extension class (MyPhysicalInventoryItemExtensions_ModAPI)
+                // lives in Sandbox.Game.dll - a different assembly key than the
+                // VRage.Game one above. Resolve via reflection to avoid a heavy
+                // compile-time reference; the AssemblyResolve handler loads Bin64.
+                var ext = Type.GetType("VRage.Game.ModAPI.Ingame.MyPhysicalInventoryItemExtensions_ModAPI, Sandbox.Game");
+                if (ext != null) batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, ext);
                 batch.AllowNamespaceOfTypes(MyWhitelistTarget.Ingame, typeof(StopwatchProbe));
             }
         }
@@ -242,7 +296,16 @@ namespace CompilerProbe
             var main = asm.GetType("Program").GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
             var il = main.GetMethodBody().GetILAsByteArray();
             int calls = il.Count(b => b == 0x28 || b == 0x6F);
-            var nsInjected = TimeIt(asm, main);
+            double nsInjected;
+            try { nsInjected = TimeIt(asm, main); }
+            catch (Exception e)
+            {
+                // some probes construct game types (MyItemType etc.) that need the
+                // running game's definition manager; the COMPILE verdict above is
+                // the whitelist proof, timing is a bonus when it works.
+                Console.WriteLine($"[{name}] COMPILE OK (whitelist) - exec skipped: {e.GetType().Name}: {e.Message}");
+                return;
+            }
 
             // BASELINE: same source, same Roslyn/options, but WITHOUT the game's
             // rewriters - this is what the code would cost if SE injected nothing.
@@ -250,7 +313,13 @@ namespace CompilerProbe
             var mainPlain = plain.GetType("Program").GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
             var ilPlain = mainPlain.GetMethodBody().GetILAsByteArray();
             int callsPlain = ilPlain.Count(b => b == 0x28 || b == 0x6F);
-            var nsPlain = TimeIt(plain, mainPlain);
+            double nsPlain;
+            try { nsPlain = TimeIt(plain, mainPlain); }
+            catch (Exception e)
+            {
+                Console.WriteLine($"[{name}] COMPILE OK (whitelist) - baseline exec skipped: {e.GetType().Name}: {e.Message}");
+                return;
+            }
 
             Console.WriteLine($"[{name}] injected: IL={il.Length}B calls={calls} {nsInjected:0.0} ns/call" +
                               $" | baseline: IL={ilPlain.Length}B calls={callsPlain} {nsPlain:0.0} ns/call" +

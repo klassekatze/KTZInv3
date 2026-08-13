@@ -421,7 +421,7 @@ namespace IngameScript
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Conduit) : false; }
 
 			gInv.update();
-			if (tick % 60 * 5 == 0)
+			if (tick % (60 * 5) == 0)
 			{
 				//if (statusLog != null) statusLog.WriteText(invInterface.listInv());
 

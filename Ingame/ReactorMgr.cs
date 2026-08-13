@@ -20,7 +20,7 @@ namespace IngameScript
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-				if (_ticks % 60 * 3 != 0) return;
+				if (_ticks % (60 * 3) != 0) return;
 				//if (!gInv.hasUpdatedOnce) return;
 
 				//if (gInv.updateCounter == curUpdate) return;//we only run this right after a full inventory update

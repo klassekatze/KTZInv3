@@ -119,7 +119,7 @@ namespace IngameScript
 						{
 							var uconv = r.UseConveyorSystem;
 
-							var amt = (MyFixedPoint)Math.Floor((double)r.InputInventory.MaxVolume / stockType.GetItemInfo().Volume);
+							var amt = (MyFixedPoint)Math.Floor((double)r.InputInventory.MaxVolume / Inventory.getItemInfo(stockType).Volume);
 
 
 							//Inventory.retrieve(bi, stockType, amt, false, true);

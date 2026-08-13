@@ -51,7 +51,7 @@ namespace IngameScript
 		{
 			//initbulk();
 			string name = item.SubtypeId.Replace("MyObjectBuilder_", "").Replace("_", " ");
-			var nfo = item.GetItemInfo();
+			var nfo = Inventory.getItemInfo(item);
 			foreach (KeyValuePair<string, string> kvp in bulkreplace)
 			{
 				if (name == kvp.Key)

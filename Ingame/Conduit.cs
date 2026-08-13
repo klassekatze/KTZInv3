@@ -58,7 +58,7 @@ namespace IngameScript
 				if (!first) sb.Append(',');
 				first = false;
 
-				var nfo = kv.Key.GetItemInfo();
+				var nfo = Inventory.getItemInfo(kv.Key);
 				var type = "";
 
 				type = nfo.IsOre ? "Ore" : nfo.IsIngot ? "Ingot" : nfo.IsAmmo ? "Ammo" : nfo.IsComponent ? "Component" : nfo.IsTool ? "Tool" : "Unknown";

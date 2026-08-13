@@ -30,6 +30,19 @@ namespace IngameScript
 				}
 			}
 
+			// MyItemInfo cache: GetItemInfo() is a game API call (dictionary
+			// lookup + item definition fetch). Item definitions are static per
+			// session, so cache the result per MyItemType.
+			static Dictionary<MyItemType, MyItemInfo> itemInfoCache = new Dictionary<MyItemType, MyItemInfo>();
+			static public MyItemInfo getItemInfo(MyItemType t)
+			{
+				MyItemInfo nfo;
+				if (itemInfoCache.TryGetValue(t, out nfo)) return nfo;
+				nfo = t.GetItemInfo();
+				itemInfoCache[t] = nfo;
+				return nfo;
+			}
+
 			//there's some giga-fucky shit going on with tanks
 			static List<string> unstackhardcode = new List<string>(){
 			"MyObjectBuilder_OxygenContainerObject",
@@ -106,7 +119,7 @@ namespace IngameScript
 								if (stackable)
 								{
 									var lpos = lItem[it.Type];
-									var nfo = it.Type.GetItemInfo();
+									var nfo = getItemInfo(it.Type);
 									var lit = itms[lpos];
 									if (it.Amount + lit.Amount < nfo.MaxStackAmount)
 									{
@@ -140,7 +153,7 @@ namespace IngameScript
 						{
 							encounteredTypes.Add(k);
 							MyFixedPoint minVol = (MyFixedPoint)0.01;
-							if (!k.GetItemInfo().UsesFractions) minVol = (MyFixedPoint)k.GetItemInfo().Volume;
+							var kinfo = getItemInfo(k); if (!kinfo.UsesFractions) minVol = (MyFixedPoint)kinfo.Volume;
 							var cat = cargokeywordbytype(k.TypeId);
 							MyFixedPoint kval = 0;
 							nonFractionalMinMarginByCat.TryGetValue(cat, out kval);
@@ -579,7 +592,7 @@ namespace IngameScript
 
 					int transfers = transfer_count;
 
-					IDBG.set(this, null);
+	//IDBG.set(this, null);
 
 					//int MOVES = 0;
 					//const int MAX_MOVES = 8;
@@ -636,10 +649,10 @@ namespace IngameScript
 								if(dest != null)
 								{
 									//we should start transferring this item.
-									IDBG.set(this, dest);
+	//IDBG.set(this, dest);
 									//if (amt > dest.manifest.freeVolume)amt = dest.manifest.freeVolume;
 									// cap by count that fits, like expel does:
-									var nfo = type.GetItemInfo();
+									var nfo = getItemInfo(type);
 									MyFixedPoint maxAccept = dest.manifest.freeVolume * (MyFixedPoint)(1.0 / nfo.Volume);
 									if (!nfo.UsesFractions) maxAccept = MyFixedPoint.Floor(maxAccept + (MyFixedPoint)0.001);
 									if (amt > maxAccept) amt = maxAccept;
@@ -649,7 +662,7 @@ namespace IngameScript
 
 									if (rem > 0)
 									{
-										IDBG.log("Unable to xfer " + rem + " of " + type.SubtypeId);
+	//IDBG.log("Unable to xfer " + rem + " of " + type.SubtypeId);
 									}
 									if (rem == amt)
 									{
@@ -679,7 +692,7 @@ namespace IngameScript
 								}
 							if(errchk == 10)
 							{
-								IDBG.log("errchk loop abort");
+	//IDBG.log("errchk loop abort");
 							}
 
 							{
@@ -715,25 +728,25 @@ namespace IngameScript
 							manifest.stuff.TryGetValue(type, out curstock);
 							MyFixedPoint goalstock = 0;
 							stocktargets.TryGetValue(type, out goalstock);
-							if (goalstock > curstock && manifest.freeVolume > (MyFixedPoint)type.GetItemInfo().Volume)
+							if (goalstock > curstock && manifest.freeVolume > (MyFixedPoint)getItemInfo(type).Volume)
 							{
 								MyFixedPoint globalstock = 0;
 								globalManifest.stuff.TryGetValue(type, out globalstock);
 								if (globalstock > curstock)
 								{
-									IDBG.set(type.SubtypeId);
-									IDBG.log(b.CustomName + " globalchk " + type.SubtypeId + " pmove " + goalstock + " " + curstock);
+	//IDBG.set(type.SubtypeId);
+	//IDBG.log(b.CustomName + " globalchk " + type.SubtypeId + " pmove " + goalstock + " " + curstock);
 									var r = sort_retrieve(this, type, goalstock - curstock);
 
 									if (transfer_count - transfers > MAX_TRANSFERS_PER_OP || transMS > MAX_TRANSFER_MS) return true;
 
-									if (r > 0) IDBG.log("unable to satisfy by " + r);
+	//if (r > 0) IDBG.log("unable to satisfy by " + r);
 								}
 							}
 							else if (goalstock < curstock)
 							{
-								IDBG.set(type.SubtypeId);
-								IDBG.log("attempt expel " + type.SubtypeId + ": " + goalstock + " < " + curstock + " in " + this.b.CustomName);
+	//IDBG.set(type.SubtypeId);
+	//IDBG.log("attempt expel " + type.SubtypeId + ": " + goalstock + " < " + curstock + " in " + this.b.CustomName);
 								expel(this, type, curstock - goalstock);
 
 								if (transfer_count - transfers > MAX_TRANSFERS_PER_OP || transMS > MAX_TRANSFER_MS) return true;
@@ -752,30 +765,30 @@ namespace IngameScript
 			static public MyFixedPoint sort_retrieve(BlockInventory dest, MyItemType t, MyFixedPoint v, bool sendinputs = false, bool recieveinputs = false)
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-				IDBG.set(dest, null);
-				IDBG.set(t.SubtypeId);
-				var nfo = t.GetItemInfo();
+	//IDBG.set(dest, null);
+	//IDBG.set(t.SubtypeId);
+				var nfo = getItemInfo(t);
 				int pidx = BlockInventory.bPriorityList.IndexOf(dest);
 				//if (ignorePriorities) pidx = -1;
-				IDBG.log("pidx=" + pidx);
-				IDBG.log("BlockInventory.bPriorityList.Count=" + BlockInventory.bPriorityList.Count);
+	//IDBG.log("pidx=" + pidx);
+	//IDBG.log("BlockInventory.bPriorityList.Count=" + BlockInventory.bPriorityList.Count);
 				for (var i = BlockInventory.bPriorityList.Count - 1; i > pidx; i--)
 				{
 					{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 					var inv = BlockInventory.bPriorityList[i];
-					IDBG.set(dest, inv);
+	//IDBG.set(dest, inv);
 					if (inv.manifest != null && inv.manifest.stuff.ContainsKey(t))
 					{
 
 						MyFixedPoint avail = inv.manifest.stuff[t];
-						IDBG.log(inv.b.CustomName + "has item, stock " + avail);
+	//IDBG.log(inv.b.CustomName + "has item, stock " + avail);
 						MyFixedPoint trns_amt = avail > v ? v : avail;
-						IDBG.log("tamt=" + trns_amt);
+	//IDBG.log("tamt=" + trns_amt);
 
 						MyFixedPoint max_accept = (inv.manifest.freeVolume * (MyFixedPoint)(1 / nfo.Volume));
 						if (!nfo.IsOre && !nfo.IsIngot) max_accept = MyFixedPoint.Floor(max_accept + (MyFixedPoint)0.001);
 						if (trns_amt > max_accept) trns_amt = max_accept;
-						IDBG.log("tamt_ma=" + trns_amt);
+	//IDBG.log("tamt_ma=" + trns_amt);
 						var rem = transfer_item(inv, dest, t, trns_amt, sendinputs, recieveinputs);
 						v -= trns_amt;
 						v += rem;
@@ -805,16 +818,16 @@ namespace IngameScript
 			static public MyFixedPoint expel(BlockInventory origin, MyItemType type, MyFixedPoint amount, bool inputs = false)
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-				var nfo = type.GetItemInfo();
+				var nfo = getItemInfo(type);
 				var kw = cargokeywordbytype(type.TypeId);
-				IDBG.set(type.SubtypeId);
+	//IDBG.set(type.SubtypeId);
 				for (var i = 0; i < BlockInventory.bPriorityList.Count; i++)
 				{
 					{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 					var inv = BlockInventory.bPriorityList[i];
 					if (inv != origin && !inv.locked)
 					{
-						IDBG.set(origin, inv);
+	//IDBG.set(origin, inv);
 						MyFixedPoint amt = 0;
 						MyFixedPoint max_accept = (inv.manifest.freeVolume * (MyFixedPoint)(1 / nfo.Volume));
 						if (!nfo.IsOre && !nfo.IsIngot) max_accept = MyFixedPoint.Floor(max_accept + (MyFixedPoint)0.001);
@@ -834,8 +847,8 @@ namespace IngameScript
 						}
 						if (amt > 0)
 						{
-							IDBG.log("maxaccept=" + max_accept);
-							IDBG.log("pushing " + amt + " to " + inv.b.CustomName);
+	//IDBG.log("maxaccept=" + max_accept);
+	//IDBG.log("pushing " + amt + " to " + inv.b.CustomName);
 							var remaining = transfer_item(origin, inv, type, amt, inputs, inputs);
 							amount -= amt;
 							amount += remaining;
@@ -856,10 +869,10 @@ namespace IngameScript
 													bool sendinputs = false, bool recieveinputs = false)
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-				IDBG.set(origin, dest);
-				IDBG.set(type.SubtypeId);
+	//IDBG.set(origin, dest);
+	//IDBG.set(type.SubtypeId);
 				if (amount == 0) return 0;
-				IDBG.log("transfer_item " + type.SubtypeId + " " + amount+" "+origin.lastN+" > "+dest.lastN);
+	//IDBG.log("transfer_item " + type.SubtypeId + " " + amount+" "+origin.lastN+" > "+dest.lastN);
 				//bool cerr = false;
 				var sa = amount;
 				foreach (var inva in origin.getSortedInventories(sendinputs))
@@ -909,14 +922,14 @@ namespace IngameScript
 					if (item.Type == type)
 					{
 						MyFixedPoint trns_amt = item.Amount > amount ? amount : item.Amount;
-						IDBG.log("_transfer_item " + type.SubtypeId + " " + trns_amt);
-						var nfo = type.GetItemInfo();
+	//IDBG.log("_transfer_item " + type.SubtypeId + " " + trns_amt);
+						var nfo = getItemInfo(type);
 						MyFixedPoint max_accept = ((dest.MaxVolume - dest.CurrentVolume) * (1f / nfo.Volume));
 						if(!nfo.UsesFractions) max_accept = MyFixedPoint.Floor(max_accept + (MyFixedPoint)0.001);
 
 						if (trns_amt > max_accept)
 						{
-							IDBG.log("_capping amt to "+max_accept);
+	//IDBG.log("_capping amt to "+max_accept);
 							trns_amt = max_accept;
 						}
 						if (trns_amt > 0)
@@ -925,12 +938,12 @@ namespace IngameScript
 							if (origin.TransferItemTo(dest, item, trns_amt))
 							{
 								amount -= trns_amt;
-								IDBG.log("_successfully moved " + trns_amt + " of " + item.Type.SubtypeId);
+	//IDBG.log("_successfully moved " + trns_amt + " of " + item.Type.SubtypeId);
 							}
 							else
 							{
 								bool conveyed = origin.CanTransferItemTo(dest, type);
-								IDBG.log("_failed to move. checkset conveyor flag");
+	//IDBG.log("_failed to move. checkset conveyor flag");
 								if (!conveyed) conveyor_error = true;
 							}
 						}
@@ -974,7 +987,7 @@ namespace IngameScript
 					}
 				}
 			}
-			static IDebugger IDBG = new IDebugger();
+	//static IDebugger IDBG = new IDebugger();
 
 
 			public void updateContainers(List<IMyTerminalBlock> c)

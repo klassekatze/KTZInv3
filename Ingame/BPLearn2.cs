@@ -56,22 +56,34 @@ namespace IngameScript
 						asm.OutputInventory.GetItems(items);
 
 						//this is because of nasty things like guns and tools that don't stack :|
+						//compact: sum amounts per type in one pass (was O(n^2) via
+						//types.Contains + inner re-scan; same result: first-seen
+						//order, first-seen ItemId, summed amount)
 						List<MyItemType> types = new List<MyItemType>();
 						List<MyInventoryItem> itemsCompact = new List<MyInventoryItem>();
+						Dictionary<MyItemType, MyFixedPoint> sums = new Dictionary<MyItemType, MyFixedPoint>();
+						Dictionary<MyItemType, uint> firstIds = new Dictionary<MyItemType, uint>();
 						foreach (var i in items)
 						{
 							var t = i.Type;
-							if (types.Contains(t)) continue;
-							types.Add(t);
-
-							MyFixedPoint c = 0;
-							foreach (var i2 in items)
+							MyFixedPoint cur;
+							if (sums.TryGetValue(t, out cur))
 							{
-								if (i2.Type == t) c += i2.Amount;
+								sums[t] = cur + i.Amount;
 							}
+							else
+							{
+								types.Add(t);
+								sums[t] = i.Amount;
+								firstIds[t] = i.ItemId;
+							}
+						}
+						foreach (var t in types)
+						{
+							var c = sums[t];
 							if (c > 0)
 							{
-								itemsCompact.Add(new MyInventoryItem(i.Type, i.ItemId, c));
+								itemsCompact.Add(new MyInventoryItem(t, firstIds[t], c));
 							}
 						}
 						items = itemsCompact;

@@ -294,7 +294,7 @@ namespace IngameScript
 
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmShuffle) : false; }
 				//shufP.s();
-				if (tick % 60 * 15 == 0)
+				if (tick % (60 * 15) == 0)
 				{
 					if(ASM_SHUFFLE)shuffleAssemblers();
 				}
@@ -302,7 +302,7 @@ namespace IngameScript
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmShuffle) : false; }
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmBalance) : false; }
 				//balP.s();
-				/*if (tick % 60 * 7 == 0)
+				/*if (tick % (60 * 7) == 0)
 				{
 					//if(ASM_FLUSH)balanceAssemblers();
 				}*/
@@ -443,7 +443,7 @@ namespace IngameScript
 					}
 
 				}
-				//if(tick % 60*60*10 == 0)
+				//if (tick % (60 * 60 * 10) == 0)
 				//{
 					/*foreach(var asm in assemblers)
 					{

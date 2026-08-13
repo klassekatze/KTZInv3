@@ -101,7 +101,7 @@ namespace IngameScript
 					string subtype = kvp.Key.SubtypeId;//.Substring("MyObjectBuilder_".Length);//kvp.Key.SubtypeId.Replace("MyObjectBuilder_", "").Replace("_", " ");
 					if (!quotas.ContainsKey(subtype))
 					{
-						var nfo = kvp.Key.GetItemInfo();
+						var nfo = Inventory.getItemInfo(kvp.Key);
 						if (!nfo.IsOre && !nfo.IsIngot)quotas[subtype] = 0;
 						else
 						{
