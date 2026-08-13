@@ -30,10 +30,22 @@ namespace KTZInv3.Tests.TestUtilities
         /// <param name="items">Initial contents as (itemType, amount) pairs.</param>
         public static CargoMock CreateCargo(string name, MyFixedPoint maxVolume, params (MyItemType type, MyFixedPoint amount)[] items)
         {
+            return CreateCargo(name, maxVolume, null, items);
+        }
+
+        /// <summary>
+        /// Creates a fake cargo container block on a specific grid (pass the grid
+        /// from <see cref="CreateGrid"/> so it matches Program.Me's grid).
+        /// </summary>
+        public static CargoMock CreateCargo(string name, MyFixedPoint maxVolume, IMyCubeGrid grid, params (MyItemType type, MyFixedPoint amount)[] items)
+        {
             ItemDefinitions.EnsureRegistered();
 
-            var grid = A.Fake<IMyCubeGrid>();
-            A.CallTo(() => grid.EntityId).Returns(_gridId++);
+            if (grid == null)
+            {
+                grid = A.Fake<IMyCubeGrid>();
+                A.CallTo(() => grid.EntityId).Returns(_gridId++);
+            }
 
             var inventory = new FakeInventory(maxVolume);
             foreach (var (type, amount) in items)
@@ -51,10 +63,21 @@ namespace KTZInv3.Tests.TestUtilities
             A.CallTo(() => block.IsWorking).Returns(true);
             A.CallTo(() => block.IsFunctional).Returns(true);
             A.CallTo(() => block.IsSameConstructAs(A<IMyTerminalBlock>.Ignored)).Returns(true);
+            A.CallTo(() => block.HasInventory).Returns(true);
+            A.CallTo(() => block.HasPlayerAccess(A<long>.Ignored)).Returns(true);
+            A.CallTo(() => block.EntityId).Returns(_gridId++);
             // no WeaponCore API on a plain cargo container
             A.CallTo(() => block.GetProperty("WcPbAPI")).Returns(null);
 
             return new CargoMock(block, inventory, grid);
+        }
+
+        /// <summary>Creates a fresh grid the Me mock and cargo blocks can share.</summary>
+        public static IMyCubeGrid CreateGrid()
+        {
+            var grid = A.Fake<IMyCubeGrid>();
+            A.CallTo(() => grid.EntityId).Returns(_gridId++);
+            return grid;
         }
 
         /// <summary>
