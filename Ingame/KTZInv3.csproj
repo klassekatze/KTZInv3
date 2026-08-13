@@ -25,6 +25,13 @@
     <PackageReference Include="Mal.Mdk2.References" Version="2.2.9" />
   </ItemGroup>
   <ItemGroup>
+    <!-- the packed script is deployed into Scripts/ by the MDK packer; it must
+         not be compiled back into the project on the next build -->
+    <Compile Remove="Scripts/**" />
+    <None Remove="Scripts/**" />
+    <AdditionalFiles Remove="Scripts/**" />
+  </ItemGroup>
+  <ItemGroup>
     <None Remove="Instructions.readme" />
     <AdditionalFiles Include="Instructions.readme" />
     <AdditionalFiles Include="thumb.png" />
