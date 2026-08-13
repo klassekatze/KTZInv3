@@ -144,7 +144,7 @@ namespace KTZInv3.Tests.Tests
 
             // 2. every label that fired has sane timing data
             Assert.That(diag.Stats.Count, Is.GreaterThanOrEqualTo(8),
-                "expected Main/Init/Invu/Stat/Cdbg + Connect/Refinery/Reactor/Conduit to fire during inv work");
+                "expected Main/Init/InvBlocks/StatusGen/PassStart + ConnectEvents/Refinery/Reactor/Conduit to fire during inv work");
             foreach (var kvp in diag.Stats)
             {
                 Assert.That(kvp.Value.Calls, Is.GreaterThan(0), $"{kvp.Key} calls");
@@ -164,10 +164,10 @@ namespace KTZInv3.Tests.Tests
                 }
             }
 
-            // 4. inv work (Invu) is the dominant consumer - the actual sorting
-            Assert.That(diag.Stats.TryGetValue(IngameScript.Program.DbgLabel.Invu, out var invu), Is.True,
-                "Invu (inventory sorting) must have fired");
-            Assert.That(invu.TotalMs, Is.GreaterThan(0), "Invu timing must be non-zero");
+            // 4. inv work (InvBlocks) is the dominant consumer - the actual sorting
+            Assert.That(diag.Stats.TryGetValue(IngameScript.Program.DbgLabel.InvBlocks, out var invu), Is.True,
+                "InvBlocks (inventory sorting) must have fired");
+            Assert.That(invu.TotalMs, Is.GreaterThan(0), "InvBlocks timing must be non-zero");
             // the per-call cost of a single block's updateT/updateP cycle must be
             // small (sub-ms per block) or the sorting loop is too heavy
             Assert.That(invu.AvgMs, Is.LessThan(1.0),

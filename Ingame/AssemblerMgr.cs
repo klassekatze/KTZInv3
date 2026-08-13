@@ -291,22 +291,22 @@ namespace IngameScript
 
 				if (!gInv.hasUpdatedOnce) return;
 
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmShuf) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmShuffle) : false; }
 				//shufP.s();
 				if (tick % 60 * 15 == 0)
 				{
 					if(ASM_SHUFFLE)shuffleAssemblers();
 				}
 				//shufP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmShuf) : false; }
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmBal) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmShuffle) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmBalance) : false; }
 				//balP.s();
 				/*if (tick % 60 * 7 == 0)
 				{
 					//if(ASM_FLUSH)balanceAssemblers();
 				}*/
 				//balP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmBal) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmBalance) : false; }
 
 				
 

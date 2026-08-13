@@ -31,7 +31,7 @@ namespace IngameScript
 
 			public void update()
 			{
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Bpl) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.BpLearn) : false; }
 				//bpl.s();
 				//assemblers only tick once per second, so a faster observation is meaningless
 			
@@ -174,7 +174,7 @@ namespace IngameScript
 					lastItems = items;
 				}
 				//bpl.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Bpl) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.BpLearn) : false; }
 			}
 		}
 	}

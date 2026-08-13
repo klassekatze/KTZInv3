@@ -118,8 +118,8 @@ namespace KTZInv3.Tests.Tests
             // enum to get human names without any string literal in script source
             var names = Enum.GetNames(typeof(IngameScript.Program.DbgLabel));
             Assert.That(names, Does.Contain("Main"));
-            Assert.That(names, Does.Contain("Invu"));
-            Assert.That(names, Does.Contain("P3"));
+            Assert.That(names, Does.Contain("InvBlocks"));
+            Assert.That(names, Does.Contain("AutoBpCheck"));
             Assert.That(names, Does.Contain("Conduit"));
             Assert.That(names, Does.Contain("Refinery"));
             Assert.That((int)IngameScript.Program.DbgLabel.Main, Is.EqualTo(1));

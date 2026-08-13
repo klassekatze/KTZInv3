@@ -348,9 +348,9 @@ namespace IngameScript
 				log("Basic structures initialized.");
 				//bt60.setwait(60);
 			}
-			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Connect) : false; }
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.ConnectEvents) : false; }
 			if (tick % connectEventInterval == 0) connectEvent2();
-			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Connect) : false; }
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.ConnectEvents) : false; }
 			if (SLEEPING) return;
 
 
@@ -377,19 +377,19 @@ namespace IngameScript
 
 				if (autocraftingLCD != null)
 				{
-					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd1) : false; }
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.LcdRead) : false; }
 					//aclcd.s();
 					var txt = autocraftingLCD.GetText();
 					//if(txt.StartsWith(""))
 					gAutocraft.readLCD(txt);
 					//aclcd.e();
-					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd1) : false; }
-					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd2) : false; }
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.LcdRead) : false; }
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.LcdWrite) : false; }
 					//aclcd2.s();
 					var o = gAutocraft.writeLCD();
 					autocraftingLCD.WriteText(o);
 					//aclcd2.e();
-					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd2) : false; }
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.LcdWrite) : false; }
 				}
 			}
 			if (arg == "clearasm")

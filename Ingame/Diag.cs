@@ -13,19 +13,22 @@ namespace IngameScript
 		///
 		/// HOW TO USE — call sites look EXACTLY like this (no other shape):
 		///
-		///     { var _ = DEBUGGING ? diag.Enter(DbgLabel.Invu) : false; }
+		///     { var _ = DEBUGGING ? diag.Enter(DbgLabel.InvBlocks) : false; }
 		///     ...work being timed...
-		///     { var _ = DEBUGGING ? diag.Exit(DbgLabel.Invu) : false; }
+		///     { var _ = DEBUGGING ? diag.Exit(DbgLabel.InvBlocks) : false; }
 		///
 		/// In-game (DEBUGGING=false): zero side effects, ~1ns per call site.
 		/// In tests: set DEBUGGING=true and swap `diag` for a subclass compiled
 		/// by the test project (Stopwatch etc. legal there), run Main(), read the
 		/// per-label timings out of the override.
 		///
-		/// Current sites (18 labels): Main/Init wrap the tick; Connect/AsmMgr/
-		/// Refinery/Reactor/Conduit wrap main()'s manager updates; Cdbg/Invu/
-		/// Stat wrap the inventory manager; Bpl/AsmShuf/AsmBal wrap assembler
-		/// work; Aclcd1/Aclcd2/P1/P2/P3 wrap the autocraft LCD paths.
+		/// Current sites (21 labels): Main/Init wrap the tick; ConnectEvents/
+		/// AsmMgr/Refinery/Reactor/Conduit wrap main()'s manager updates;
+		/// PassStart/InvBlocks wrap the inventory manager (with per-phase
+		/// InvManifest/InvPriority/InvTransfer sub-seams around each block's
+		/// updateM/updateP/updateT); StatusGen wraps genstatus; BpLearn/
+		/// AsmShuffle/AsmBalance wrap assembler work; LcdRead/LcdWrite/
+		/// AutoAvail/AutoReport/AutoBpCheck wrap the autocraft LCD paths.
 		///
 		/// WHY THIS EXACT SHAPE — DO NOT "SIMPLIFY". Every constraint below was
 		/// measured, not guessed:
@@ -101,18 +104,21 @@ namespace IngameScript
 		{
 			Init,
 			Main,
-			Aclcd1,
-			Aclcd2,
-			Stat,
-			Cdbg,
-			Invu,
-			Bpl,
-			AsmShuf,
-			AsmBal,
-			P1,
-			P2,
-			P3,
-			Connect,
+			LcdRead,
+			LcdWrite,
+			StatusGen,
+			PassStart,
+			InvBlocks,
+			InvManifest,
+			InvPriority,
+			InvTransfer,
+			BpLearn,
+			AsmShuffle,
+			AsmBalance,
+			AutoAvail,
+			AutoReport,
+			AutoBpCheck,
+			ConnectEvents,
 			AsmMgr,
 			Refinery,
 			Reactor,

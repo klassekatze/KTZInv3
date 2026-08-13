@@ -92,7 +92,7 @@ namespace IngameScript
 			//static Profiler p3 = new Profiler("p3");
 			public string writeLCD()
 			{
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P1) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AutoAvail) : false; }
 				//p1.s();
 				Dictionary<string, int> avail = new Dictionary<string, int>();
 				
@@ -126,8 +126,8 @@ namespace IngameScript
 					avail[subtype] = (int)kvp.Value;
 				}
 				//p1.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P1) : false; }
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P2) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AutoAvail) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AutoReport) : false; }
 				//p2.s();
 				StringBuilder b = new StringBuilder("Component Current | Wanted\n");
 
@@ -150,7 +150,7 @@ namespace IngameScript
 					b.Append(quota);
 
 					bool hasbp = false;
-					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P3) : false; }
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AutoBpCheck) : false; }
 					//p3.s();
 					foreach (var bpkvp in blueprints)
 					{
@@ -162,7 +162,7 @@ namespace IngameScript
 						}
 					}
 					//p3.e();
-					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P3) : false; }
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AutoBpCheck) : false; }
 					if (!hasbp) b.Append(" (no BP)");
 					b.Append("\n");
 				}
@@ -193,7 +193,7 @@ namespace IngameScript
 					r += "\n";
 				}*/
 				//p2.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P2) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AutoReport) : false; }
 				return b.ToString();
 			}
 			string last = "";

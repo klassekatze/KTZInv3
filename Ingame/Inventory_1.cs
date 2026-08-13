@@ -17,7 +17,7 @@ namespace IngameScript
 		{
 			public static InventoryManifest globalManifest = new InventoryManifest();
 			public static Dictionary<string, MyFixedPoint> nonFractionalMinMarginByCat = new Dictionary<string, MyFixedPoint>();
-			public static List<MyItemType> encounteredTypes = new List<MyItemType>();
+			public static HashSet<MyItemType> encounteredTypes = new HashSet<MyItemType>();
 
 			static Dictionary<string, MyItemType> typeTable = new Dictionary<string, MyItemType>();
 			static public MyItemType getType(string type, string subtype)
@@ -122,12 +122,10 @@ namespace IngameScript
 							//manifest generate
 							if (!stuff.ContainsKey(it.Type)) stuff[it.Type] = it.Amount;
 							else stuff[it.Type] += it.Amount;
-							var t = cargokeywordbytype(it.Type.TypeId);
-							MyFixedPoint tv = 0;
-							typeVolume.TryGetValue(t, out tv);
-							tv += it.Type.GetItemInfo().Volume * it.Amount;
-							typeVolume[t] = tv;
-						}
+							//typeVolume was write-only (never read by any consumer) and
+							//cost a GetItemInfo() game API call per item per manifest
+							//build - removed as dead work.
+							}
 					}
 					if (merges > 0)
 					{
@@ -481,10 +479,10 @@ namespace IngameScript
 
 							var PI = getPI(lpriority);
 							PI.bis.Remove(this);
-							PI.update();
+							//PI.update() dead: aggregate typeVolumeFree/categories are write-only
 							PI = getPI(priority);
 							PI.bis.Add(this);
-							PI.update();
+							//PI.update() dead: aggregate typeVolumeFree/categories are write-only
 						}
 						if(!special) stocktargets.Clear();
 					}
@@ -567,7 +565,8 @@ namespace IngameScript
 						if (manifest != null) Inventory.globalManifest.sub(manifest);
 						Inventory.globalManifest.add(nm);
 						manifest = nm;
-						getPI(this.priority).update();
+						//getPI(this.priority).update() dead: aggregate typeVolumeFree/categories
+						//are write-only; only the .bis membership (maintained in updateP) matters
 					}
 				}
 				public bool updateT()
@@ -655,9 +654,10 @@ namespace IngameScript
 										//the rest of the category isn't starved.
 										deadEnds.Add(dest);
 									}
-									//...
+									//...the aggregate's typeVolumeFree/categories are write-only
+									//(all consumers read bi.categories/bi.manifest.freeVolume
+									//directly), so pa.update() here was pure dead work per transfer
 
-									pa.update();//recompute the PriorityAggregate values.
 									//if we filled the destination beyond nonFractionalMaxMarginByCat,
 									//we should delete entry in targs so that higherPriorityWithRoomFor is recomputed for next relevant item
 									if (dest.manifest.freeVolume < margin)
@@ -1032,7 +1032,7 @@ namespace IngameScript
 			public string lastStatus = "";
 			public void genstatus()
 			{
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Stat) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.StatusGen) : false; }
 				//statP.s();
 				if (tick % 5 == 0)
 				{
@@ -1064,7 +1064,7 @@ namespace IngameScript
 					}
 				}
 				//statP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Stat) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.StatusGen) : false; }
 			}
 
 
@@ -1094,7 +1094,7 @@ namespace IngameScript
 
 			public void update()
 			{
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Cdbg) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.PassStart) : false; }
 				//cdbgP.s();
 				if (!itemsUpdating && (tick - lastUpdateTick > updateInterval))
 				{
@@ -1113,8 +1113,8 @@ namespace IngameScript
 					}
 				}
 				//cdbgP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Cdbg) : false; }
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Invu) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.PassStart) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.InvBlocks) : false; }
 				//invuP.s();
 				if (itemsUpdating)
 				{
@@ -1136,13 +1136,15 @@ namespace IngameScript
 							BlockInventory bi = BlockInventory.getBI(t);
 							var bus = blockUpdateStep;
 							blockUpdateStep++;
-							if (bus == 0) bi.updateM();
-							if (bus == 1) bi.updateP();
+							if (bus == 0) { { var _ = DEBUGGING ? diag.Enter(DbgLabel.InvManifest) : false; } bi.updateM(); { var _ = DEBUGGING ? diag.Exit(DbgLabel.InvManifest) : false; } }
+							if (bus == 1) { { var _ = DEBUGGING ? diag.Enter(DbgLabel.InvPriority) : false; } bi.updateP(); { var _ = DEBUGGING ? diag.Exit(DbgLabel.InvPriority) : false; } }
 							if (bus == 2)
 							{
 								if (SORT)
 								{
+									{ var _ = DEBUGGING ? diag.Enter(DbgLabel.InvTransfer) : false; }
 									movedItems = bi.updateT();
+									{ var _ = DEBUGGING ? diag.Exit(DbgLabel.InvTransfer) : false; }
 									SANchk++;
 								}
 								if (!movedItems || SANchk > 10)
@@ -1163,7 +1165,7 @@ namespace IngameScript
 					}
 				}
 				//invuP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Invu) : false; }
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.InvBlocks) : false; }
 				genstatus();
 			}
 		}
