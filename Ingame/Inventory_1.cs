@@ -372,7 +372,7 @@ namespace IngameScript
 
 				public void updateP()
 				{
-					gProgram.TripGuard();
+					{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 					if (b.CustomName != lastN)
 					{
 						lastN = b.CustomName;
@@ -559,7 +559,7 @@ namespace IngameScript
 				}
 				public void updateM()
 				{
-					gProgram.TripGuard();
+					{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 					InventoryManifest nm = new InventoryManifest();
 					if (!hidden) nm.set(this);
 					if (manifest == null || !manifest.equals(nm))
@@ -574,7 +574,7 @@ namespace IngameScript
 				public bool updateT()
 				{
 					//updateT_incomplete = false;
-					gProgram.TripGuard();
+					{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 					if (locked) return false;
 
 					int transfers = transfer_count;
@@ -596,7 +596,7 @@ namespace IngameScript
 
 						foreach (var type in keys)//things we have
 						{
-							gProgram.TripGuardInstr();
+							{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 							var cat = cargokeywordbytype(type.TypeId);
 							//this should only end up actually calling higherPriorityWithRoomFor once per relevant category tag.
 							PriorityAggregate pa = null;
@@ -610,7 +610,7 @@ namespace IngameScript
 
 							while(pa != null && errchk < 10)//there is a higher priority container in a PriorityAggregate that does want the item's category
 							{
-								gProgram.TripGuardInstr();
+								{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 								MyFixedPoint amt = 0;
 
 								manifest.stuff.TryGetValue(type, out amt);
@@ -751,7 +751,7 @@ namespace IngameScript
 			//todo review and update this one
 			static public MyFixedPoint sort_retrieve(BlockInventory dest, MyItemType t, MyFixedPoint v, bool sendinputs = false, bool recieveinputs = false)
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				IDBG.set(dest, null);
 				IDBG.set(t.SubtypeId);
 				var nfo = t.GetItemInfo();
@@ -761,7 +761,7 @@ namespace IngameScript
 				IDBG.log("BlockInventory.bPriorityList.Count=" + BlockInventory.bPriorityList.Count);
 				for (var i = BlockInventory.bPriorityList.Count - 1; i > pidx; i--)
 				{
-					gProgram.TripGuardInstr();
+					{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 					var inv = BlockInventory.bPriorityList[i];
 					IDBG.set(dest, inv);
 					if (inv.manifest != null && inv.manifest.stuff.ContainsKey(t))
@@ -787,7 +787,7 @@ namespace IngameScript
 
 			static public MyFixedPoint force_retrieve(BlockInventory dest, MyItemType type, MyFixedPoint amount, bool sendinputs = false, bool recieveinputs = false)
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				foreach (var ibi in Inventory.BlockInventory.bPriorityList)
 				{
 					MyFixedPoint available = 0;
@@ -804,13 +804,13 @@ namespace IngameScript
 
 			static public MyFixedPoint expel(BlockInventory origin, MyItemType type, MyFixedPoint amount, bool inputs = false)
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				var nfo = type.GetItemInfo();
 				var kw = cargokeywordbytype(type.TypeId);
 				IDBG.set(type.SubtypeId);
 				for (var i = 0; i < BlockInventory.bPriorityList.Count; i++)
 				{
-					gProgram.TripGuardInstr();
+					{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 					var inv = BlockInventory.bPriorityList[i];
 					if (inv != origin && !inv.locked)
 					{
@@ -855,7 +855,7 @@ namespace IngameScript
 			static public MyFixedPoint transfer_item(BlockInventory origin, BlockInventory dest, MyItemType type, MyFixedPoint amount,
 													bool sendinputs = false, bool recieveinputs = false)
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				IDBG.set(origin, dest);
 				IDBG.set(type.SubtypeId);
 				if (amount == 0) return 0;
@@ -1106,7 +1106,7 @@ namespace IngameScript
 			{
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.PassStart) : false; }
 				//cdbgP.s();
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				if (!itemsUpdating && (tick - lastUpdateTick > updateInterval))
 				{
 					upd();

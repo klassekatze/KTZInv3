@@ -19,7 +19,7 @@ namespace IngameScript
 			public MyFixedPoint totalFuel = 0;
 			public void update()
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				if (_ticks % 60 * 3 != 0) return;
 				//if (!gInv.hasUpdatedOnce) return;
 

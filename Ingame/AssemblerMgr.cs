@@ -287,7 +287,7 @@ namespace IngameScript
 
 			public void update()
 			{
-				gProgram.TripGuard();
+				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				foreach (var l in asmstates) l.bpl.update();
 
 				if (!gInv.hasUpdatedOnce) return;

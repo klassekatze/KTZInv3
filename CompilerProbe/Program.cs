@@ -140,6 +140,23 @@ namespace CompilerProbe
                  "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
                  "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
                  "    }\n"),
+                // ---- helper-method form (what the fix must NOT do): the call site
+                // gets the full injected method wrap (EnterMethod/CountInstructions/
+                // ExitMethod) on EVERY guard evaluation - exactly the mandatory
+                // instrumentation the inline ternary avoids ----
+                ("runtime_guard_methodcall",
+                 "    public class ExecutionTripException : System.Exception { }\n" +
+                 "    public static bool TripExecution() { throw new ExecutionTripException(); }\n" +
+                 "    int MaxInstructionCount;\n" +
+                 "    int MaxCallChainDepth;\n" +
+                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 9 / 10; MaxCallChainDepth = Runtime.MaxCallChainDepth * 9 / 10; }\n" +
+                 "    public void TripGuard()\n" +
+                 "    {\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
+                 "    }\n" +
+                 "    public void Main(string argument)\n    {\n" +
+                 "        TripGuard();\n" +
+                 "    }\n"),
             };
 
             foreach (var (name, body) in scripts)

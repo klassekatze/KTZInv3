@@ -137,23 +137,13 @@ namespace IngameScript
 			throw new ExecutionTripException();
 		}
 
-		/// <summary>Full guard: instruction count AND call chain depth (for
-		/// function entry points - depth can only change at call boundaries).
-		/// Instance method: Runtime is an instance property; nested managers
-		/// reach it via the static gProgram singleton.</summary>
-		public void TripGuard()
-		{
-			if (Runtime == null) return;
-			{ var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-		}
-
-		/// <summary>Instruction-count-only guard for hot loop heads (depth is
-		/// constant within a straight-line loop; callees have their own guards).</summary>
-		public void TripGuardInstr()
-		{
-			if (Runtime == null) return;
-			{ var _ = Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
-		}
+		// NO TripGuard()/TripGuardInstr() helper methods: any method call gets the
+		// rewriter's full injected wrap (EnterMethod/CountInstructions/ExitMethod)
+		// on EVERY evaluation - burning the budget the guard protects and briefly
+		// raising the call chain depth. The guard must be an INLINE TERNARY at each
+		// site (expression -> never wrapped by InjectedBlock):
+		//   entry:    { var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+		//   loophead: { var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 
 		public void Save()
 		{
@@ -251,8 +241,8 @@ namespace IngameScript
 			updateType = upd;
 			try
 			{
-				TripGuard();
-				var _ = skipper;
+				{ var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+				bool skip = skipper;
 			}
 			catch (ExecutionTripException)
 			{
