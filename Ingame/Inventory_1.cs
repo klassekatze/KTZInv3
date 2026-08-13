@@ -205,7 +205,7 @@ namespace IngameScript
 				prAggs.Sort();
 				return x;
 			}
-			static PriorityAggregate higherPriorityWithRoomFor(BlockInventory bi, string category)
+			static PriorityAggregate higherPriorityWithRoomFor(BlockInventory bi, string category, HashSet<BlockInventory> deadEnds = null)
 			{
 				//PriorityAggregate pi = null;
 				var pidx = 0;
@@ -223,12 +223,15 @@ namespace IngameScript
 				for (int i = 0; i < pidx; i++)
 				{
 					var c = prAggs[i];
-					MyFixedPoint free = 0;
-					c.typeVolumeFree.TryGetValue(category, out free);
-
 					MyFixedPoint minmargin = 0;
 					nonFractionalMinMarginByCat.TryGetValue(category, out minmargin);
-					if (free > minmargin) return c;
+					//per-container check: the aggregate must contain a live (non-dead-end)
+					//container that accepts this category with at least the minimum margin free.
+					foreach (var b in c.bis)
+					{
+						if (deadEnds != null && deadEnds.Contains(b)) continue;
+						if (b.categories.Contains(category) && b.manifest.freeVolume >= minmargin) return c;
+					}
 				}
 				return null;
 			}
@@ -582,6 +585,10 @@ namespace IngameScript
 						Dictionary<string, PriorityAggregate> targs = new Dictionary<string, PriorityAggregate>();
 						List<MyItemType> keys = new List<MyItemType>(manifest.stuff.Keys);
 						//this ensures the dict can be edited during our loop
+						//dests we tried to push to this pass that accepted nothing (e.g. no conveyor connection).
+						//they are skipped for the rest of this updateT pass so a dead end can't starve
+						//other destinations for the category.
+						HashSet<BlockInventory> deadEnds = new HashSet<BlockInventory>();
 
 						foreach (var type in keys)//things we have
 						{
@@ -614,6 +621,7 @@ namespace IngameScript
 								BlockInventory dest = null;
 								foreach(var bi in pa.bis)
 								{
+									if (deadEnds.Contains(bi)) continue;
 									if(bi.categories.Contains(cat) && bi.manifest.freeVolume >= margin)
 									{//this cargo accepts this category and has more free space than the minimum margin for this category
 										dest = bi;
@@ -638,6 +646,13 @@ namespace IngameScript
 									{
 										IDBG.log("Unable to xfer " + rem + " of " + type.SubtypeId);
 									}
+									if (rem == amt)
+									{
+										//nothing moved: this destination is a dead end for this pass
+										//(e.g. no conveyor connection). mark it so it is skipped and
+										//the rest of the category isn't starved.
+										deadEnds.Add(dest);
+									}
 									//...
 
 									pa.update();//recompute the PriorityAggregate values.
@@ -645,11 +660,17 @@ namespace IngameScript
 									//we should delete entry in targs so that higherPriorityWithRoomFor is recomputed for next relevant item
 									if (dest.manifest.freeVolume < margin)
 									{
-										targs[cat] = pa = higherPriorityWithRoomFor(this, cat);
+										targs[cat] = pa = higherPriorityWithRoomFor(this, cat, deadEnds);
 									}
 								}
-								if (dest == null) break;
-							}
+								else
+								{
+									//no live candidate left in this aggregate (all dead ends or full):
+									//fall through to the next lower-priority aggregate that still wants
+									//the category, instead of giving up on it.
+									targs[cat] = pa = higherPriorityWithRoomFor(this, cat, deadEnds);
+								}
+								}
 							if(errchk == 10)
 							{
 								IDBG.log("errchk loop abort");
