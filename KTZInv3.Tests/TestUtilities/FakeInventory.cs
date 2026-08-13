@@ -167,7 +167,9 @@ namespace KTZInv3.Tests.TestUtilities
             if (amt <= 0) return false;
 
             var nfo = item.Type.GetItemInfo();
-            var maxAccept = (MaxVolume - CurrentVolume) * (MyFixedPoint)(1.0 / (double)nfo.Volume);
+            // cap by the DESTINATION's free space (like the real game): the
+            // source being full must never block pushing items OUT of it.
+            var maxAccept = (fake.MaxVolume - fake.CurrentVolume) * (MyFixedPoint)(1.0 / (double)nfo.Volume);
             if (!nfo.UsesFractions) maxAccept = MyFixedPoint.Floor(maxAccept + (MyFixedPoint)0.001);
             if (amt > maxAccept) amt = maxAccept;
             if (amt <= 0) return false;
