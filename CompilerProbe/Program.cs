@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using VRage.Library.Compiler;
@@ -118,6 +119,25 @@ namespace CompilerProbe
                  "        { var _ = DEBUGGING ? diag.Enter(DbgLabel.Main) : false; }\n" +
                  "        { var _ = DEBUGGING ? diag.Exit(DbgLabel.Main) : false; }\n" +
                  "    }\n"),
+                // ---- Runtime guard: are CurrentInstructionCount / CurrentCallChainDepth
+                // whitelisted, and what does the ternary trip cost? ----
+                ("runtime_guard_reads",
+                 "    public bool exectrrip() { throw new System.Exception(\"trip\"); }\n" +
+                 "    int MaxInstructionCount;\n" +
+                 "    int MaxCallChainDepth;\n" +
+                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 10 / 9; MaxCallChainDepth = Runtime.MaxCallChainDepth * 10 / 9; }\n" +
+                 "    public void Main(string argument)\n    {\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
+                 "    }\n"),
+                ("runtime_guard_reads_x2",
+                 "    public bool exectrrip() { throw new System.Exception(\"trip\"); }\n" +
+                 "    int MaxInstructionCount;\n" +
+                 "    int MaxCallChainDepth;\n" +
+                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 10 / 9; MaxCallChainDepth = Runtime.MaxCallChainDepth * 10 / 9; }\n" +
+                 "    public void Main(string argument)\n    {\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
+                 "    }\n"),
             };
 
             foreach (var (name, body) in scripts)
@@ -188,7 +208,17 @@ namespace CompilerProbe
 
             var asm = compiler.Compile(MyApiTarget.Ingame, name, new[] { script },
                 new List<Message>(), "probe: " + name, enableDebugInformation: false, trackMemoryUsage).Result;
-            if (asm == null) { Console.WriteLine($"[{name}] COMPILE FAILED"); return; }
+            if (asm == null)
+            {
+                // surface WHY it failed (whitelist/blacklist diagnostics)
+                var msgs = new List<Message>();
+                var asm2 = compiler.Compile(MyApiTarget.Ingame, name, new[] { script },
+                    msgs, "probe: " + name, enableDebugInformation: false, trackMemoryUsage).Result;
+                Console.WriteLine($"[{name}] COMPILE FAILED");
+                foreach (var m in msgs.Take(8))
+                    Console.WriteLine("    " + m);
+                return;
+            }
 
             var main = asm.GetType("Program").GetMethod("Main", BindingFlags.Public | BindingFlags.Instance);
             var il = main.GetMethodBody().GetILAsByteArray();
@@ -213,7 +243,22 @@ namespace CompilerProbe
         /// Uses a compiled delegate (no reflection Invoke overhead) for precision.</summary>
         static double TimeIt(Assembly asm, MethodInfo main)
         {
-            var instance = Activator.CreateInstance(asm.GetType("Program"));
+            // mirror the game exactly: GetUninitializedObject, set Runtime BEFORE
+            // the ctor runs (Program() reads Runtime.MaxInstructionCount etc.)
+            var type = asm.GetType("Program");
+            var instance = FormatterServices.GetUninitializedObject(type);
+            using var probeBlock = IlInjector.BeginRunBlock(100000000, 1000, false);
+            var fake = new FakeRuntimeInfo(probeBlock);
+            try
+            {
+                typeof(Sandbox.ModAPI.Ingame.MyGridProgram).GetProperty("Runtime",
+                    BindingFlags.Public | BindingFlags.Instance)?.SetValue(instance, fake);
+            }
+            catch { }
+            // now run the ctor (the game invokes it right after wiring Runtime)
+            type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, Type.EmptyTypes, null)?.Invoke(instance, null);
+
             var dlg = (Action<string>)Delegate.CreateDelegate(typeof(Action<string>), instance, main);
             using (IlInjector.BeginRunBlock(100000000, 1000, false))
                 for (int i = 0; i < 10000; i++) dlg("");
@@ -272,5 +317,30 @@ namespace CompilerProbe
 
         public static void Start() => Sw.Restart();
         public static double ElapsedMicros() => Sw.Elapsed.TotalMicroseconds;
+    }
+
+    /// <summary>
+    /// Mirrors the game's private RuntimeInfo (MyProgrammableBlock) for headless
+    /// probes: delegates every counter to the IlInjector handle exactly like the
+    /// real implementation (InstructionCount = m_numInstructions etc.).
+    /// </summary>
+    public sealed class FakeRuntimeInfo : Sandbox.ModAPI.Ingame.IMyGridProgramRuntimeInfo
+    {
+        readonly IlInjector.ICounterHandle h;
+        public FakeRuntimeInfo(IlInjector.ICounterHandle handle) { h = handle; }
+
+        public int MaxInstructionCount => h.MaxInstructionCount;
+        public int CurrentInstructionCount => h.InstructionCount;
+        public int MaxCallChainDepth => h.MaxMethodCallCount;
+        public int CurrentCallChainDepth => h.MethodCallCount;
+        public int Depth => h.Depth;
+        public long LifetimeTicks => 0;
+        public TimeSpan TimeSinceLastRun => TimeSpan.Zero;
+        public double LastRunTimeMs => 0;
+        public Sandbox.ModAPI.Ingame.UpdateFrequency UpdateFrequency
+        {
+            get => Sandbox.ModAPI.Ingame.UpdateFrequency.None;
+            set { }
+        }
     }
 }

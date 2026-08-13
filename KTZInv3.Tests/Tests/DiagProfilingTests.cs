@@ -46,57 +46,6 @@ namespace KTZInv3.Tests.Tests
             ScriptRunner.ResetStatics();
         }
 
-        /// <summary>
-        /// Per-label timing accumulator: a running Stopwatch, per-label call
-        /// counts and cumulative ticks. Handles nesting (Main wraps Init, etc.)
-        /// via an enter-stack keyed by label.
-        /// </summary>
-        class TimingDiag : IngameScript.Program.DiagBase
-        {
-            public sealed class LabelStats
-            {
-                public long Calls;
-                public long TotalTicks;
-                public long MinTicks = long.MaxValue;
-                public long MaxTicks;
-                public double TotalMs => TotalTicks * (1000.0 / Stopwatch.Frequency);
-                public double AvgMs => TotalTicks * (1000.0 / Stopwatch.Frequency) / Math.Max(1, Calls);
-                public double MinMs => MinTicks == long.MaxValue ? 0 : MinTicks * (1000.0 / Stopwatch.Frequency);
-                public double MaxMs => MaxTicks * (1000.0 / Stopwatch.Frequency);
-            }
-
-            readonly Stopwatch sw = new Stopwatch();
-            readonly Dictionary<IngameScript.Program.DbgLabel, LabelStats> stats =
-                new Dictionary<IngameScript.Program.DbgLabel, LabelStats>();
-            // nesting support: stack of (label, startTick) per enter
-            readonly Stack<(IngameScript.Program.DbgLabel label, long start)> stack =
-                new Stack<(IngameScript.Program.DbgLabel, long)>();
-
-            public IReadOnlyDictionary<IngameScript.Program.DbgLabel, LabelStats> Stats => stats;
-            public int StackDepth => stack.Count;
-
-            public override bool Enter(IngameScript.Program.DbgLabel label)
-            {
-                if (!sw.IsRunning) sw.Start();
-                stack.Push((label, sw.ElapsedTicks));
-                return true;
-            }
-
-            public override bool Exit(IngameScript.Program.DbgLabel label)
-            {
-                long end = sw.ElapsedTicks;
-                if (stack.Count == 0) return true;
-                var (l, start) = stack.Pop();
-                long elapsed = end - start;
-                if (!stats.TryGetValue(l, out var s)) { s = new LabelStats(); stats[l] = s; }
-                s.Calls++;
-                s.TotalTicks += elapsed;
-                s.MinTicks = Math.Min(s.MinTicks, elapsed);
-                s.MaxTicks = Math.Max(s.MaxTicks, elapsed);
-                return true;
-            }
-        }
-
         [Test]
         public void Profile_InventoryWork_ThroughSeam()
         {

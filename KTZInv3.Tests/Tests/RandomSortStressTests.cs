@@ -52,14 +52,84 @@ namespace KTZInv3.Tests.Tests
         [TestCase(777001)]
         public void Random100Containers_10Passes_ValidatorClean(int seed)
         {
-            const int ContainerCount = 100;
-            const int Passes = 10;
+            var (world, cargos) = BuildRandomWorld(seed, 100);
+
+            var runner = ScriptRunner.Create(world.Gts, world.Me);
+            // 100 containers x 3 steps x (5-15 tick interval) per pass -> 10 passes
+            // can take tens of thousands of ticks; give it a generous budget
+            const int MaxTicks = 200000;
+            Assert.That(runner.RunUntilUpdateCounter(10, MaxTicks), Is.True,
+                $"updateCounter 10 not reached after {MaxTicks} ticks (used {runner.TicksUsed})");
+            TestContext.WriteLine($"ticks={runner.TicksUsed} updateCounter={runner.GetGInv()?.updateCounter}");
+
+            // the run must have actually MOVED items - otherwise "no violations"
+            // is trivially true. transfer_count is a static that counts successful
+            // TransferItemTo calls and never resets ("xfer ops this runtime").
+            var tf = typeof(IngameScript.Program.Inventory).GetField("transfer_count",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var transferOps = (int)(tf?.GetValue(null) ?? 0);
+            TestContext.WriteLine($"total transfer ops in run: {transferOps}");
+            Assert.That(transferOps, Is.GreaterThan(0),
+                "the run must have performed real transfers, not just sat there");
+
+            // brute-force: no item may have a better home, nothing may sit in a
+            // container that doesn't accept its category, specials may only hold
+            // declared stocktargets
+            var violations = InventoryValidator.Validate(world);
+            foreach (var v in violations.Take(30)) TestContext.WriteLine(v.ToString());
+            Assert.That(violations, Is.Empty,
+                $"expected zero violations after 10 passes over 100 containers, " +
+                $"got {violations.Count}: {string.Join("\n", violations.Take(10))}");
+        }
+
+        /// <summary>
+        /// Profiles the same random 100-container composition through the Diag
+        /// seam: per-label cost of 10 full inventory passes. The point is to see
+        /// whether per-container cost scales sanely at 100 blocks (vs the 44-block
+        /// blueprint) and whether any label is doing disproportionate work.
+        /// </summary>
+        [Test]
+        public void Random100Containers_ProfilePerLabelCost()
+        {
+            var (world, _) = BuildRandomWorld(12345, 100);
+
+            IngameScript.Program.DEBUGGING = true;
+            var diag = new TimingDiag();
+            IngameScript.Program.diag = diag;
+
+            var runner = ScriptRunner.Create(world.Gts, world.Me);
+            const int MaxTicks = 200000;
+            Assert.That(runner.RunUntilUpdateCounter(10, MaxTicks), Is.True,
+                $"updateCounter 10 not reached after {MaxTicks} ticks (used {runner.TicksUsed})");
+
+            var report = diag.Report($"random 100 containers, ticks={runner.TicksUsed}, 10 passes");
+            TestContext.WriteLine("\n" + report);
+            Console.WriteLine("\n===== random-100 profile =====");
+            Console.WriteLine(report);
+            Console.WriteLine("==============================");
+
+            // ---- evaluate ----
+            Assert.That(diag.StackDepth, Is.Zero, "enter/exit stack must be balanced");
+            Assert.That(diag.Stats.TryGetValue(IngameScript.Program.DbgLabel.InvBlocks, out var invu), Is.True,
+                "InvBlocks must have fired");
+            // red-flag threshold: per-block inv work must stay sub-millisecond at
+            // 100 containers (the blueprint world stays ~0.04ms/block)
+            Assert.That(invu.AvgMs, Is.LessThan(1.0),
+                $"per-block inv update should be <1ms even at 100 containers, got {invu.AvgMs:F4}ms");
+            TestContext.WriteLine($"InvBlocks: calls={invu.Calls} total={invu.TotalMs:F2}ms avg={invu.AvgMs:F4}ms max={invu.MaxMs:F4}ms");
+        }
+
+        /// <summary>Builds a world of <paramref name="containerCount"/> containers
+        /// with a seeded-random labeling composition, half of them filled with
+        /// random items and counts.</summary>
+        static (BlueprintFactory.World world, List<CargoMock> cargos) BuildRandomWorld(int seed, int containerCount)
+        {
             var rng = new Random(seed);
 
             var grid = CargoFactory.CreateGrid();
             var cargos = new List<CargoMock>();
 
-            for (int i = 0; i < ContainerCount; i++)
+            for (int i = 0; i < containerCount; i++)
             {
                 var name = RandomLabel(rng, i);
                 var customData = name.Contains("special") ? RandomCustomData(rng) : null;
@@ -110,33 +180,7 @@ namespace KTZInv3.Tests.Tests
                     MaxVolume = c.AsFakeInventory().MaxVolume,
                 });
             }
-
-            var runner = ScriptRunner.Create(gts, world.Me);
-            // 100 containers x 3 steps x (5-15 tick interval) per pass -> 10 passes
-            // can take tens of thousands of ticks; give it a generous budget
-            const int MaxTicks = 200000;
-            Assert.That(runner.RunUntilUpdateCounter(Passes, MaxTicks), Is.True,
-                $"updateCounter {Passes} not reached after {MaxTicks} ticks (used {runner.TicksUsed})");
-            TestContext.WriteLine($"ticks={runner.TicksUsed} updateCounter={runner.GetGInv()?.updateCounter}");
-
-            // the run must have actually MOVED items - otherwise "no violations"
-            // is trivially true. transfer_count is a static that counts successful
-            // TransferItemTo calls and never resets ("xfer ops this runtime").
-            var tf = typeof(IngameScript.Program.Inventory).GetField("transfer_count",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var transferOps = (int)(tf?.GetValue(null) ?? 0);
-            TestContext.WriteLine($"total transfer ops in run: {transferOps}");
-            Assert.That(transferOps, Is.GreaterThan(0),
-                "the run must have performed real transfers, not just sat there");
-
-            // brute-force: no item may have a better home, nothing may sit in a
-            // container that doesn't accept its category, specials may only hold
-            // declared stocktargets
-            var violations = InventoryValidator.Validate(world);
-            foreach (var v in violations.Take(30)) TestContext.WriteLine(v.ToString());
-            Assert.That(violations, Is.Empty,
-                $"expected zero violations after {Passes} passes over {ContainerCount} containers, " +
-                $"got {violations.Count}: {string.Join("\n", violations.Take(10))}");
+            return (world, cargos);
         }
 
         /// <summary>Random label: 0-3 category tokens, random priority, and
