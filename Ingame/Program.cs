@@ -290,9 +290,11 @@ namespace IngameScript
 					Runtime.UpdateFrequency = UpdateFrequency.None;
 					return true;
 				}
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Main) : false; }
 				mainP.start();
 				main(mainArg, updateType);
 				mainP.stop();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Main) : false; }
 				if (tick % 5 == 0)
 				{
 					Echo(tick.ToString());
@@ -319,12 +321,14 @@ namespace IngameScript
 				bool first = true;
 		void main(string arg, UpdateType upd)
 		{
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Init) : false; }
 			initP.start();
 			if (tick % 10 == 0)
 			{
 				resourceLoader.update();
 			}
 			initP.stop();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Init) : false; }
 			if (resourceLoader.neverFullyLoaded)
 			{
 				Echo("INITIALIZING: " + resourceLoader.step + "/11");
@@ -363,15 +367,19 @@ namespace IngameScript
 
 				if (autocraftingLCD != null)
 				{
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd1) : false; }
 					aclcd.s();
 					var txt = autocraftingLCD.GetText();
 					//if(txt.StartsWith(""))
 					gAutocraft.readLCD(txt);
 					aclcd.e();
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd1) : false; }
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd2) : false; }
 					aclcd2.s();
 					var o = gAutocraft.writeLCD();
 					autocraftingLCD.WriteText(o);
 					aclcd2.e();
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd2) : false; }
 				}
 			}
 			if (arg == "clearasm")

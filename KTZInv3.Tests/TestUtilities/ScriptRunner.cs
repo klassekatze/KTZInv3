@@ -85,6 +85,9 @@ namespace KTZInv3.Tests.TestUtilities
             IngameScript.Program.Inventory.BlockInventory.idl = 0;
             IngameScript.Program.APIWC = null;
             IngameScript.Program.resourceLoader = null;
+            // the no-op debug seam: DEBUGGING off + a fresh no-op diag per test
+            IngameScript.Program.DEBUGGING = false;
+            IngameScript.Program.diag = new IngameScript.Program.DiagBase();
             // the block loader APPENDS to these static lists and never clears
             // them — without a reset, later tests inherit earlier tests' blocks
             // (a stale empty p99 cargo would absorb transfers meant for the

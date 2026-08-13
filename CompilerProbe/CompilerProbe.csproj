@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>CompilerProbe</AssemblyName>
+    <RootNamespace>CompilerProbe</RootNamespace>
+    <SpaceEngineersBinCopyLocal>true</SpaceEngineersBinCopyLocal>
+    <NoWarn>CS0618;CS0612;NU1510</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- SE ships Roslyn 2.9.0 in Bin64 - the EXACT version the game compiles with -->
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>/home/user/SpaceEngineers/Bin64/Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>/home/user/SpaceEngineers/Bin64/Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <!-- game refs (VRage.Scripting.dll provides MyScriptCompiler.Static) -->
+    <PackageReference Include="Mal.Mdk2.References" Version="2.2.9" />
+    <PackageReference Include="System.Collections.Immutable" Version="1.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- MDK2.References does not ship these; add them directly from the game -->
+    <Reference Include="VRage.Scripting">
+      <HintPath>/home/user/SpaceEngineers/Bin64/VRage.Scripting.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="VRage.Library">
+      <HintPath>/home/user/SpaceEngineers/Bin64/VRage.Library.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="VRage">
+      <HintPath>/home/user/SpaceEngineers/Bin64/VRage.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

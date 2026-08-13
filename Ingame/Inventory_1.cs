@@ -1032,6 +1032,7 @@ namespace IngameScript
 			public string lastStatus = "";
 			public void genstatus()
 			{
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Stat) : false; }
 				statP.s();
 				if (tick % 5 == 0)
 				{
@@ -1063,6 +1064,7 @@ namespace IngameScript
 					}
 				}
 				statP.e();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Stat) : false; }
 			}
 
 
@@ -1092,6 +1094,7 @@ namespace IngameScript
 
 			public void update()
 			{
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Cdbg) : false; }
 				cdbgP.s();
 				if (!itemsUpdating && (tick - lastUpdateTick > updateInterval))
 				{
@@ -1110,6 +1113,8 @@ namespace IngameScript
 					}
 				}
 				cdbgP.e();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Cdbg) : false; }
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Invu) : false; }
 				invuP.s();
 				if (itemsUpdating)
 				{
@@ -1158,6 +1163,7 @@ namespace IngameScript
 					}
 				}
 				invuP.e();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Invu) : false; }
 				genstatus();
 			}
 		}
