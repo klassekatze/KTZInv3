@@ -142,8 +142,8 @@ namespace IngameScript
 		public static int tick = -1;
 		//static BurnoutTrack bt60 = new BurnoutTrack(60, maxScriptTimeMSPerSec);
 
-		static Profiler initP = new Profiler("init");
-		static Profiler mainP = new Profiler("main");
+		//static Profiler initP = new Profiler("init");
+		//static Profiler mainP = new Profiler("main");
 
 		int uf1 = 0;
 		int uf10 = 0;
@@ -291,14 +291,14 @@ namespace IngameScript
 					return true;
 				}
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Main) : false; }
-				mainP.start();
+				//mainP.start();
 				main(mainArg, updateType);
-				mainP.stop();
+				//mainP.stop();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Main) : false; }
 				if (tick % 5 == 0)
 				{
 					Echo(tick.ToString());
-					if (profileLog != null) profileLog.WriteText("name:ms1t:ms60t\n" + Profiler.getAllReports());
+					//if (profileLog != null) profileLog.WriteText("name:ms1t:ms60t\n" + Profiler.getAllReports());
 					if (gInv != null)
 					{
 						Echo(gInv.lastStatus);
@@ -322,12 +322,12 @@ namespace IngameScript
 		void main(string arg, UpdateType upd)
 		{
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Init) : false; }
-			initP.start();
+			//initP.start();
 			if (tick % 10 == 0)
 			{
 				resourceLoader.update();
 			}
-			initP.stop();
+			//initP.stop();
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Init) : false; }
 			if (resourceLoader.neverFullyLoaded)
 			{
@@ -348,17 +348,27 @@ namespace IngameScript
 				log("Basic structures initialized.");
 				//bt60.setwait(60);
 			}
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Connect) : false; }
 			if (tick % connectEventInterval == 0) connectEvent2();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Connect) : false; }
 			if (SLEEPING) return;
 
 
 			if (autocraftingLCD != null)
 			{
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmMgr) : false; }
 				gAssemblerMgr.update();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmMgr) : false; }
 			}
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Refinery) : false; }
 			gRefineryMgr.update();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Refinery) : false; }
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Reactor) : false; }
 			gReactorMgr.update();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Reactor) : false; }
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Conduit) : false; }
 			conduitUpdate();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Conduit) : false; }
 
 			gInv.update();
 			if (tick % 60 * 5 == 0)
@@ -368,17 +378,17 @@ namespace IngameScript
 				if (autocraftingLCD != null)
 				{
 					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd1) : false; }
-					aclcd.s();
+					//aclcd.s();
 					var txt = autocraftingLCD.GetText();
 					//if(txt.StartsWith(""))
 					gAutocraft.readLCD(txt);
-					aclcd.e();
+					//aclcd.e();
 					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd1) : false; }
 					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Aclcd2) : false; }
-					aclcd2.s();
+					//aclcd2.s();
 					var o = gAutocraft.writeLCD();
 					autocraftingLCD.WriteText(o);
-					aclcd2.e();
+					//aclcd2.e();
 					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Aclcd2) : false; }
 				}
 			}
@@ -413,8 +423,8 @@ namespace IngameScript
 				Logger.writeSuperlog();
 			}
 		}
-		static Profiler aclcd = new Profiler("aclcd1");
-		static Profiler aclcd2 = new Profiler("aclcd2");
+		//static Profiler aclcd = new Profiler("aclcd1");
+		//static Profiler aclcd2 = new Profiler("aclcd2");
 
 		bool SLEEPING = false;
 

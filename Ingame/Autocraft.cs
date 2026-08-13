@@ -87,13 +87,13 @@ namespace IngameScript
 			}
 
 			//key=item, val=production bp
-			static Profiler p1 = new Profiler("p1");
-			static Profiler p2 = new Profiler("p2");
-			static Profiler p3 = new Profiler("p3");
+			//static Profiler p1 = new Profiler("p1");
+			//static Profiler p2 = new Profiler("p2");
+			//static Profiler p3 = new Profiler("p3");
 			public string writeLCD()
 			{
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P1) : false; }
-				p1.s();
+				//p1.s();
 				Dictionary<string, int> avail = new Dictionary<string, int>();
 				
 				foreach(var kvp in Inventory.globalManifest.stuff)
@@ -125,10 +125,10 @@ namespace IngameScript
 					}
 					avail[subtype] = (int)kvp.Value;
 				}
-				p1.e();
+				//p1.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P1) : false; }
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P2) : false; }
-				p2.s();
+				//p2.s();
 				StringBuilder b = new StringBuilder("Component Current | Wanted\n");
 
 				foreach (var kvp in quotas)
@@ -151,7 +151,7 @@ namespace IngameScript
 
 					bool hasbp = false;
 					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.P3) : false; }
-					p3.s();
+					//p3.s();
 					foreach (var bpkvp in blueprints)
 					{
 						if (bpkvp.Key.SubtypeId.ToString() == kvp.Key)
@@ -161,7 +161,7 @@ namespace IngameScript
 							break;
 						}
 					}
-					p3.e();
+					//p3.e();
 					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P3) : false; }
 					if (!hasbp) b.Append(" (no BP)");
 					b.Append("\n");
@@ -192,7 +192,7 @@ namespace IngameScript
 					if (!hasbp) r += " (no BP)";
 					r += "\n";
 				}*/
-				p2.e();
+				//p2.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.P2) : false; }
 				return b.ToString();
 			}

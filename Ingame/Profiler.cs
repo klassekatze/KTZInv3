@@ -9,6 +9,8 @@ namespace IngameScript
 {
 	public partial class Program : MyGridProgram
 	{
+		// bapp is kept: it is used by Logging.cs and Inventory_1.cs (genstatus),
+		// NOT part of the Profiler system.
 		static void bapp(StringBuilder b, params object[] args)
 		{
 			foreach (object a in args)
@@ -16,6 +18,13 @@ namespace IngameScript
 				b.Append(a.ToString());
 			}
 		}
+
+		// ============================================================================
+		// Profiler system DISABLED (redundant - superseded by the Diag seam,
+		// see Diag.cs). All instantiations/calls/display code were commented out
+		// across the script; these class definitions are kept only for reference.
+		// ============================================================================
+		/*
 		public class Stopwatch
 		{
 			DateTime start;
@@ -265,5 +274,6 @@ namespace IngameScript
 				return b.ToString();
 			}
 		}
+		*/
 	}
 }

@@ -23,7 +23,7 @@ namespace IngameScript
 			public List<MyProductionItem> lastQueue = new List<MyProductionItem>();
 			List<MyInventoryItem> lastItems = new List<MyInventoryItem>();
 			float lastProgress = -1;
-			static Profiler bpl = new Profiler("bpl");
+			//static Profiler bpl = new Profiler("bpl");
 
 			//int tick2 = 0;
 			//int tick3 = 0;
@@ -32,7 +32,7 @@ namespace IngameScript
 			public void update()
 			{
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Bpl) : false; }
-				bpl.s();
+				//bpl.s();
 				//assemblers only tick once per second, so a faster observation is meaningless
 			
 				if (tick % 60 == 0 && /*(ltime- DateTime.Now).TotalMilliseconds >= 200*/ asm.Mode == MyAssemblerMode.Assembly)
@@ -173,7 +173,7 @@ namespace IngameScript
 					lastQueue = queue;
 					lastItems = items;
 				}
-				bpl.e();
+				//bpl.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Bpl) : false; }
 			}
 		}

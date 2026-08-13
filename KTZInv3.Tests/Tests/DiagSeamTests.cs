@@ -120,6 +120,8 @@ namespace KTZInv3.Tests.Tests
             Assert.That(names, Does.Contain("Main"));
             Assert.That(names, Does.Contain("Invu"));
             Assert.That(names, Does.Contain("P3"));
+            Assert.That(names, Does.Contain("Conduit"));
+            Assert.That(names, Does.Contain("Refinery"));
             Assert.That((int)IngameScript.Program.DbgLabel.Main, Is.EqualTo(1));
         }
     }

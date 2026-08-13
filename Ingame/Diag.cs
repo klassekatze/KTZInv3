@@ -22,6 +22,11 @@ namespace IngameScript
 		/// by the test project (Stopwatch etc. legal there), run Main(), read the
 		/// per-label timings out of the override.
 		///
+		/// Current sites (18 labels): Main/Init wrap the tick; Connect/AsmMgr/
+		/// Refinery/Reactor/Conduit wrap main()'s manager updates; Cdbg/Invu/
+		/// Stat wrap the inventory manager; Bpl/AsmShuf/AsmBal wrap assembler
+		/// work; Aclcd1/Aclcd2/P1/P2/P3 wrap the autocraft LCD paths.
+		///
 		/// WHY THIS EXACT SHAPE — DO NOT "SIMPLIFY". Every constraint below was
 		/// measured, not guessed:
 		///
@@ -107,6 +112,11 @@ namespace IngameScript
 			P1,
 			P2,
 			P3,
+			Connect,
+			AsmMgr,
+			Refinery,
+			Reactor,
+			Conduit,
 		}
 
 		/// <summary>

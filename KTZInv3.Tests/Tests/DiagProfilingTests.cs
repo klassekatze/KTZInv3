@@ -143,8 +143,8 @@ namespace KTZInv3.Tests.Tests
             Assert.That((double)p99After, Is.GreaterThan((double)p99Before), "[P99] must fill");
 
             // 2. every label that fired has sane timing data
-            Assert.That(diag.Stats.Count, Is.GreaterThanOrEqualTo(5),
-                "expected at least Main/Init/Invu/Stat/Cdbg to fire during inv work");
+            Assert.That(diag.Stats.Count, Is.GreaterThanOrEqualTo(8),
+                "expected Main/Init/Invu/Stat/Cdbg + Connect/Refinery/Reactor/Conduit to fire during inv work");
             foreach (var kvp in diag.Stats)
             {
                 Assert.That(kvp.Value.Calls, Is.GreaterThan(0), $"{kvp.Key} calls");

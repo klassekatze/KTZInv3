@@ -274,8 +274,8 @@ namespace IngameScript
 					}
 				}
 			}
-			static Profiler shufP = new Profiler("asmshuf");
-			static Profiler balP = new Profiler("asmbal");
+			//static Profiler shufP = new Profiler("asmshuf");
+			//static Profiler balP = new Profiler("asmbal");
 			int lbal = 0;
 
 			public int updateCountsAsmDisasmChange = 0;
@@ -292,20 +292,20 @@ namespace IngameScript
 				if (!gInv.hasUpdatedOnce) return;
 
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmShuf) : false; }
-				shufP.s();
+				//shufP.s();
 				if (tick % 60 * 15 == 0)
 				{
 					if(ASM_SHUFFLE)shuffleAssemblers();
 				}
-				shufP.e();
+				//shufP.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmShuf) : false; }
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmBal) : false; }
-				balP.s();
+				//balP.s();
 				/*if (tick % 60 * 7 == 0)
 				{
 					//if(ASM_FLUSH)balanceAssemblers();
 				}*/
-				balP.e();
+				//balP.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmBal) : false; }
 
 				

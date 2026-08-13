@@ -1000,7 +1000,7 @@ namespace IngameScript
 			public int lastUpdateTick = 0;
 			public int ticksRun = 0;
 
-			static Profiler invuP = new Profiler("invu");
+			//static Profiler invuP = new Profiler("invu");
 
 			public int updateCounter = 0;
 
@@ -1028,12 +1028,12 @@ namespace IngameScript
 				if (errors.Count > 5) errors.Dequeue();
 				rerrtick = tick;
 			}
-			static Profiler statP = new Profiler("stat");
+			//static Profiler statP = new Profiler("stat");
 			public string lastStatus = "";
 			public void genstatus()
 			{
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Stat) : false; }
-				statP.s();
+				//statP.s();
 				if (tick % 5 == 0)
 				{
 					if (errd && tick - rerrtick > 10 * 60)
@@ -1063,7 +1063,7 @@ namespace IngameScript
 						if (statusLog != null) statusLog.WriteText(s);
 					}
 				}
-				statP.e();
+				//statP.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Stat) : false; }
 			}
 
@@ -1090,12 +1090,12 @@ namespace IngameScript
 			int blockUpdateStep = 0;
 			int SANchk = 0;
 
-			static Profiler cdbgP = new Profiler("cdbg");
+			//static Profiler cdbgP = new Profiler("cdbg");
 
 			public void update()
 			{
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Cdbg) : false; }
-				cdbgP.s();
+				//cdbgP.s();
 				if (!itemsUpdating && (tick - lastUpdateTick > updateInterval))
 				{
 					upd();
@@ -1112,10 +1112,10 @@ namespace IngameScript
 						cargodbg.WriteText(fml.ToString());
 					}
 				}
-				cdbgP.e();
+				//cdbgP.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Cdbg) : false; }
 				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Invu) : false; }
-				invuP.s();
+				//invuP.s();
 				if (itemsUpdating)
 				{
 					if (nextC >= containers.Count)
@@ -1162,7 +1162,7 @@ namespace IngameScript
 						}
 					}
 				}
-				invuP.e();
+				//invuP.e();
 				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Invu) : false; }
 				genstatus();
 			}
