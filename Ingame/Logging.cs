@@ -49,6 +49,14 @@ namespace IngameScript
 			public static void log(string s, LT level)
 			{
 				if (level > LOG_LEVEL) return;
+				// LCD gate: no console LCD -> no one can read these messages, so
+				// skip the accumulation entirely (no allocations, no list churn).
+				// The display path (hypermain) already checks consoleLog; this
+				// moves the gate to the write side so log() itself is free
+				// without a log LCD. Superlog ("log" command -> controller
+				// CustomData) shares the same gate: without an LCD you are not
+				// running a logging setup.
+				if (consoleLog == null) return;
 				string s2 = s;
 				if (s.Length > 50)
 				{

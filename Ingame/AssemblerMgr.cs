@@ -285,10 +285,30 @@ namespace IngameScript
 			public bool should_disasm = false;
 			public string disasm_rsn = "";
 
+			// cached status counts, refreshed once per second (assemblers only
+			// tick once per second anyway - faster observation is meaningless).
+			// stalled = has orders in queue but not in a working state.
+			public int asmWorking = 0;
+			public int asmStalled = 0;
+			public int asmIdle = 0;
+
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				foreach (var l in asmstates) l.bpl.update();
+
+				if (tick % 60 == 0)
+				{
+					asmWorking = asmStalled = asmIdle = 0;
+					foreach (var l in asmstates)
+					{
+						var a = l.bpl.asm;
+						bool hasOrders = !a.IsQueueEmpty;
+						if (hasOrders && a.IsProducing) asmWorking++;
+						else if (hasOrders) asmStalled++;
+						else asmIdle++;
+					}
+				}
 
 				if (!gInv.hasUpdatedOnce) return;
 

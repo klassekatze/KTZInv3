@@ -64,9 +64,24 @@ namespace IngameScript
 			bool flipflop = false;
 
 			int refi = 0;
+
+			// cached status counts, refreshed once per second (working state
+			// based, per the status display requirement)
+			public int refWorking = 0;
+			public int refIdle = 0;
+
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+				if (tick % 60 == 0)
+				{
+					refWorking = refIdle = 0;
+					for (int i = 0; i < Program.refineries.Count; i++)
+					{
+						if (Program.refineries[i].IsProducing) refWorking++;
+						else refIdle++;
+					}
+				}
 				if (!gInv.hasUpdatedOnce) return;
 
 				if (gInv.updateCounter != curUpdate)

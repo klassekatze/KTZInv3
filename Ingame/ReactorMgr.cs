@@ -17,6 +17,10 @@ namespace IngameScript
 
 			public MyItemType? fuelType = null;
 			public MyFixedPoint totalFuel = 0;
+
+			// per-type fuel totals for the status display, rebuilt each update.
+			// key = fuel item type; value = total amount across all reactors.
+			public Dictionary<MyItemType, MyFixedPoint> fuelByType = new Dictionary<MyItemType, MyFixedPoint>();
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
@@ -30,6 +34,7 @@ namespace IngameScript
 				// 1. Gather Data (and fix the empty reactor alignment bug)
 				totalFuel = 0;
 				fuelType = null;
+				fuelByType.Clear();
 				List<MyFixedPoint> fuelCounts = new List<MyFixedPoint>();
 
 				for (int i = 0; i < Program.reactors.Count; i++)
@@ -42,6 +47,13 @@ namespace IngameScript
 						if (fuelType == null) fuelType = itm.Value.Type; // Store the exact type of fuel
 						totalFuel += itm.Value.Amount;
 						fuelCounts.Add(itm.Value.Amount);
+
+						// per-type totals for the status display: sum the slot-0
+						// fuel across reactors (a reactor only ever holds one
+						// fuel type in slot 0)
+						MyFixedPoint cur;
+						if (fuelByType.TryGetValue(itm.Value.Type, out cur)) fuelByType[itm.Value.Type] = cur + itm.Value.Amount;
+						else fuelByType[itm.Value.Type] = itm.Value.Amount;
 					}
 					else
 					{

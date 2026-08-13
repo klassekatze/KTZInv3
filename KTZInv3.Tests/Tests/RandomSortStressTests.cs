@@ -66,7 +66,7 @@ namespace KTZInv3.Tests.Tests
             // is trivially true. transfer_count is a static that counts successful
             // TransferItemTo calls and never resets ("xfer ops this runtime").
             var tf = typeof(IngameScript.Program.Inventory).GetField("transfer_count",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
             var transferOps = (int)(tf?.GetValue(null) ?? 0);
             TestContext.WriteLine($"total transfer ops in run: {transferOps}");
             Assert.That(transferOps, Is.GreaterThan(0),

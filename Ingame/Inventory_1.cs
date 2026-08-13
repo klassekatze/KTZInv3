@@ -900,7 +900,7 @@ namespace IngameScript
 				return amount;
 			}
 
-			static int transfer_count = 0;
+			public static int transfer_count = 0;
 			static bool conveyor_error = false;
 
 			static int transTick = 0;
@@ -1012,8 +1012,8 @@ namespace IngameScript
 
 				upd();
 			}
-			List<IMyTerminalBlock> containers = new List<IMyTerminalBlock>();
-			int nextC = 0;
+			public List<IMyTerminalBlock> containers = new List<IMyTerminalBlock>();
+			public int nextC = 0;
 			int nextCS = 0;
 
 			bool itemsUpdating = true;
@@ -1027,23 +1027,23 @@ namespace IngameScript
 
 			public int updateCounter = 0;
 
-			enum STATUS
+			public enum STATUS
 			{
 				PREINIT,
 				INIT,
 				MANIFESTS,
 				IDLE
 			}
-			string[] statlbl = {
+			public string[] statlbl = {
 				"PREINIT",
 				"INIT",
 				"PROCESSING",
 				"IDLE"
 			};
-			STATUS cstat = STATUS.PREINIT;
-			Queue<string> errors = new Queue<string>();
-			int rerrtick = 0;
-			bool errd = false;
+			public STATUS cstat = STATUS.PREINIT;
+			public Queue<string> errors = new Queue<string>();
+			public int rerrtick = 0;
+			public bool errd = false;
 			public void rerrlog(string s)
 			{
 				errd = true;
@@ -1053,41 +1053,12 @@ namespace IngameScript
 			}
 			//static Profiler statP = new Profiler("stat");
 			public string lastStatus = "";
+			// status text generation moved out of Inventory into Program.genStatus()
+			// (StatusGen.cs) - this class owns the inventory state, the standalone
+			// function retrieves what it needs from the managers instead.
 			public void genstatus()
 			{
-				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.StatusGen) : false; }
-				//statP.s();
-				if (tick % 5 == 0)
-				{
-					if (errd && tick - rerrtick > 10 * 60)
-					{
-						errd = false;
-						errors.Clear();
-					}
-					StringBuilder status = new StringBuilder();
-					var lbl = statlbl[(int)cstat];
-					if (cstat >= STATUS.MANIFESTS && cstat != STATUS.IDLE)
-					{
-						bapp(status, "Working ", nextC + 1, "/", containers.Count, "\n");
-						if(nextC < containers.Count)bapp(status, containers[nextC].CustomName, "\n");
-					}
-					bapp(status, lbl, "\n");
-					bapp(status, transfer_count+" xfer ops this runtime\n\n");
-					bapp(status, "updateCountsAsmDisasmChange: " + gAssemblerMgr.updateCountsAsmDisasmChange+ "\n");
-					bapp(status, "should_asm: " + gAssemblerMgr.should_asm + "\n");
-					if (gAssemblerMgr.asm_rsn != "") bapp(status, gAssemblerMgr.asm_rsn + "\n");
-					bapp(status, "should_disasm: " + gAssemblerMgr.should_disasm + "\n");
-					if (gAssemblerMgr.disasm_rsn != "") bapp(status, gAssemblerMgr.disasm_rsn + "\n");
-					foreach (var l in errors) bapp(status, l, "\n");
-					var s = status.ToString();
-					if (s != lastStatus)
-					{
-						lastStatus = s;
-						if (statusLog != null) statusLog.WriteText(s);
-					}
-				}
-				//statP.e();
-				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.StatusGen) : false; }
+				gProgram.genStatus();
 			}
 
 
