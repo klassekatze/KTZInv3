@@ -122,21 +122,23 @@ namespace CompilerProbe
                 // ---- Runtime guard: are CurrentInstructionCount / CurrentCallChainDepth
                 // whitelisted, and what does the ternary trip cost? ----
                 ("runtime_guard_reads",
-                 "    public bool exectrrip() { throw new System.Exception(\"trip\"); }\n" +
+                 "    public class ExecutionTripException : System.Exception { }\n" +
+                 "    public static bool TripExecution() { throw new ExecutionTripException(); }\n" +
                  "    int MaxInstructionCount;\n" +
                  "    int MaxCallChainDepth;\n" +
-                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 10 / 9; MaxCallChainDepth = Runtime.MaxCallChainDepth * 10 / 9; }\n" +
+                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 9 / 10; MaxCallChainDepth = Runtime.MaxCallChainDepth * 9 / 10; }\n" +
                  "    public void Main(string argument)\n    {\n" +
-                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
                  "    }\n"),
                 ("runtime_guard_reads_x2",
-                 "    public bool exectrrip() { throw new System.Exception(\"trip\"); }\n" +
+                 "    public class ExecutionTripException : System.Exception { }\n" +
+                 "    public static bool TripExecution() { throw new ExecutionTripException(); }\n" +
                  "    int MaxInstructionCount;\n" +
                  "    int MaxCallChainDepth;\n" +
-                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 10 / 9; MaxCallChainDepth = Runtime.MaxCallChainDepth * 10 / 9; }\n" +
+                 "    public Program() { MaxInstructionCount = Runtime.MaxInstructionCount * 9 / 10; MaxCallChainDepth = Runtime.MaxCallChainDepth * 9 / 10; }\n" +
                  "    public void Main(string argument)\n    {\n" +
-                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
-                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? exectrrip() : false; }\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
+                 "        { var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }\n" +
                  "    }\n"),
             };
 

@@ -100,9 +100,59 @@ namespace IngameScript
 			resourceLoader.p = this;
 			bootTime = DateTime.Now;
 
+			// budget guard: trip at 90% of the engine's per-run limits so we can
+			// abort a runaway tick cleanly (throw + catch in Main) instead of the
+			// engine killing the script (ScriptOutOfInstructionsException etc.)
+			// Runtime is wired onto the instance BEFORE the ctor runs (the game
+			// uses FormatterServices.GetUninitializedObject + property set).
+			// Static de-facto consts so the nested managers can read them.
+			MaxInstructionCount = Runtime.MaxInstructionCount * 9 / 10;
+			MaxCallChainDepth = Runtime.MaxCallChainDepth * 9 / 10;
+
 			log("BOOT", LT.LOG_N);
 			//Config = new Config_();
 			Runtime.UpdateFrequency = updateFrequency;// UpdateFrequency.Update1;//| */UpdateFrequency.Update10 | UpdateFrequency.Update100;
+		}
+
+		// ---- budget trip guard ----
+		// The engine kills the script when the injected instruction counter
+		// exceeds Runtime.MaxInstructionCount (50000) or the call chain depth
+		// exceeds Runtime.MaxCallChainDepth (1000). Trip at 90% of those with a
+		// script-defined exception that Main catches silently: the tick's work is
+		// abandoned cleanly, the run block unwinds (ExitMethod runs in the
+		// injected finallys), and the next tick starts with fresh counters.
+		public static int MaxInstructionCount = 0;
+		public static int MaxCallChainDepth = 0;
+
+		/// <summary>Script-defined exception type (whitelist IsInSource) used to
+		/// abort a tick that is approaching the engine's run budget.</summary>
+		public class ExecutionTripException : Exception
+		{
+		}
+
+		/// <summary>Throws <see cref="ExecutionTripException"/>. Must return bool
+		/// so it fits the ternary guard expression.</summary>
+		public static bool TripExecution()
+		{
+			throw new ExecutionTripException();
+		}
+
+		/// <summary>Full guard: instruction count AND call chain depth (for
+		/// function entry points - depth can only change at call boundaries).
+		/// Instance method: Runtime is an instance property; nested managers
+		/// reach it via the static gProgram singleton.</summary>
+		public void TripGuard()
+		{
+			if (Runtime == null) return;
+			{ var _ = (Runtime.CurrentInstructionCount > MaxInstructionCount || Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+		}
+
+		/// <summary>Instruction-count-only guard for hot loop heads (depth is
+		/// constant within a straight-line loop; callees have their own guards).</summary>
+		public void TripGuardInstr()
+		{
+			if (Runtime == null) return;
+			{ var _ = Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 		}
 
 		public void Save()
@@ -199,7 +249,17 @@ namespace IngameScript
 		{
 			mainArg = arg;
 			updateType = upd;
-			var _ = skipper;
+			try
+			{
+				TripGuard();
+				var _ = skipper;
+			}
+			catch (ExecutionTripException)
+			{
+				// budget guard tripped: abandon this tick's work cleanly. The
+				// engine's injected try/finally ran ExitMethod during unwinding,
+				// so the call chain depth is balanced; next tick starts fresh.
+			}
 		}
 
 		static private readonly int _windowSize = 60;

@@ -80,8 +80,20 @@ namespace KTZInv3.Tests.TestUtilities
 
             private Action<string> GetEcho() => _echo ?? Console.WriteLine;
 
-            private IMyGridProgramRuntimeInfo GetRuntime() =>
-                _runtime ?? A.Fake<IMyGridProgramRuntimeInfo>();
+            private IMyGridProgramRuntimeInfo GetRuntime()
+            {
+                if (_runtime != null) return _runtime;
+                // realistic defaults mirroring the game: 50000 instructions /
+                // 1000 call chain depth per run, counters start at 0. The guard
+                // trips at 90% of these; tests that want to exercise the trip
+                // pass a fake with a tiny Max or a large Current.
+                var fake = A.Fake<IMyGridProgramRuntimeInfo>();
+                A.CallTo(() => fake.MaxInstructionCount).Returns(50000);
+                A.CallTo(() => fake.MaxCallChainDepth).Returns(1000);
+                A.CallTo(() => fake.CurrentInstructionCount).Returns(0);
+                A.CallTo(() => fake.CurrentCallChainDepth).Returns(0);
+                return fake;
+            }
 
             public IngameScript.Program Build()
             {

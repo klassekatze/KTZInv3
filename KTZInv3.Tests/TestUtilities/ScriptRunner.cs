@@ -38,17 +38,33 @@ namespace KTZInv3.Tests.TestUtilities
             return new ScriptRunner(gts, me);
         }
 
+        public static ScriptRunner Create(FakeGts gts, IMyProgrammableBlock me, IMyGridProgramRuntimeInfo runtime)
+        {
+            var runner = new ScriptRunner(gts, me);
+            runner._runtime = runtime;
+            return runner;
+        }
+
+        IMyGridProgramRuntimeInfo _runtime;
+
+        /// <summary>Builds the Program instance (Game = gateway build + Main loop wiring).</summary>
+        public void Build()
+        {
+            Program = Gateway.CreateProgram()
+                .WithGridTerminalSystem(Gts)
+                .WithMe(Me)
+                .WithRuntime(_runtime)
+                .WithEcho(EchoMessages.Add)
+                .Build();
+        }
+
         /// <summary>
         /// Runs Main until gInv.updateCounter &gt;= target (or maxTicks is hit).
         /// Returns true if the counter was reached.
         /// </summary>
         public bool RunUntilUpdateCounter(int target, int maxTicks = MaxTicks)
         {
-            Program = Gateway.CreateProgram()
-                .WithGridTerminalSystem(Gts)
-                .WithMe(Me)
-                .WithEcho(EchoMessages.Add)
-                .Build();
+            Build();
 
             TicksUsed = 0;
             while (TicksUsed < maxTicks)

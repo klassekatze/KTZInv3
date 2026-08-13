@@ -66,6 +66,7 @@ namespace IngameScript
 			int refi = 0;
 			public void update()
 			{
+				gProgram.TripGuard();
 				if (!gInv.hasUpdatedOnce) return;
 
 				if (gInv.updateCounter != curUpdate)
