@@ -50,41 +50,65 @@ namespace IngameScript
 				known[item] = composition;
 			}
 
-			// serializes the registry section (lines after the KTZREC; header):
-			// item;ingredient;amount (amount per 1 unit of item)
+			// serializes the registry section (lines after the KTZREC; header).
+			// One line per item, all ingredients on the same line as
+			// comma-separated pairs (the item prefix is not repeated):
+			//   item;ingredient1;amount1,ingredient2;amount2
+			// MyItemType.ToString() contains neither ',' nor ';', so the
+			// delimiters are unambiguous. Old-format lines (one ingredient
+			// per line: item;ingredient;amount) still parse.
 			static public string writeRegistry()
 			{
 				StringBuilder sb = new StringBuilder();
 				foreach (var itemKvp in known)
 				{
+					sb.Append('\n').Append(itemKvp.Key.ToString());
+					bool first = true;
 					foreach (var ingKvp in itemKvp.Value)
 					{
-						sb.Append('\n').Append(itemKvp.Key.ToString())
-						  .Append(';').Append(ingKvp.Key.ToString())
+						sb.Append(first ? ';' : ',').Append(ingKvp.Key.ToString())
 						  .Append(';').Append(((double)ingKvp.Value).ToString("0.###"));
+						first = false;
 					}
 				}
 				return sb.ToString();
 			}
 
-			// parses one registry line: item;ingredient;amount
+			// parses one registry line (new or old format):
+			//   new: item;ing1;a1,ing2;a2   (ingredients comma-separated)
+			//   old: item;ingredient;amount (a single comma-chunk)
 			static public void loadRegistryLine(string line)
 			{
-				var s2 = line.Split(';');
-				if (s2.Length < 3) return;
+				var chunks = line.Split(',');
+				if (chunks.Length < 1) return;
 				try
 				{
-					var item = MyItemType.Parse(s2[0].Trim());
-					var ingredient = MyItemType.Parse(s2[1].Trim());
-					double amount;
-					if (!double.TryParse(s2[2].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out amount)) return;
-					Dictionary<MyItemType, MyFixedPoint> comp;
-					if (!known.TryGetValue(item, out comp))
+					var first = chunks[0].Split(';');
+					if (first.Length < 3) return;
+					var item = MyItemType.Parse(first[0].Trim());
+
+					// one line = one item: all comma-chunks are
+					// ingredient;amount pairs of that item's composition
+					var comp = new Dictionary<MyItemType, MyFixedPoint>();
+					foreach (var chunk in chunks)
 					{
-						comp = new Dictionary<MyItemType, MyFixedPoint>();
-						known[item] = comp;
+						var parts = chunk.Split(';');
+						if (parts.Length < 2) continue;
+						double amount;
+						if (!double.TryParse(parts[parts.Length - 1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out amount)) continue;
+						comp[MyItemType.Parse(parts[parts.Length - 2].Trim())] = (MyFixedPoint)amount;
 					}
-					comp[ingredient] = (MyFixedPoint)amount;
+					if (comp.Count == 0) return;
+					// merge into the existing item entry: old-format lines
+					// are one ingredient per line, so each subsequent line
+					// for the same item appends its ingredient
+					Dictionary<MyItemType, MyFixedPoint> existing;
+					if (!known.TryGetValue(item, out existing))
+					{
+						existing = new Dictionary<MyItemType, MyFixedPoint>();
+						known[item] = existing;
+					}
+					foreach (var kvp in comp) existing[kvp.Key] = kvp.Value;
 				}
 				catch (Exception) { }
 			}

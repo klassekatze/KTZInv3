@@ -301,6 +301,11 @@ namespace KTZInv3.Tests.Tests
             Assert.That(registry, Does.Contain("MyObjectBuilder_Refinery/LargeRefinery"), "registry must include the refinery def");
             Assert.That(registry, Does.Contain("Stone"), "registry must include the input ore");
             Assert.That(registry, Does.Contain("Gravel"), "registry must include the output");
+            // compact: stone -> gravel + iron on ONE line (prefix not repeated)
+            Assert.That(registry.Split('\n').Count(l => l.Contains("MyObjectBuilder_Refinery/LargeRefinery;MyObjectBuilder_Ore/Stone")), Is.EqualTo(1),
+                "one line per (refinery def, input): outputs comma-separated");
+            Assert.That(registry, Does.Contain("MyObjectBuilder_Refinery/LargeRefinery;MyObjectBuilder_Ore/Stone;MyObjectBuilder_Component/Gravel;0.8,MyObjectBuilder_Ingot/Iron;0.02"),
+                "all outputs of one input must share a line");
 
             // wipe and reload
             t.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
@@ -316,6 +321,24 @@ namespace KTZInv3.Tests.Tests
             Assert.That(reloaded.ContainsKey(LargeRefineryDef), Is.True);
             Assert.That((double)reloaded[LargeRefineryDef][Stone][Gravel], Is.EqualTo(0.8).Within(0.001),
                 "ratio must survive the registry round-trip");
+        }
+
+        [Test]
+        public void OldFormatLines_StillParse()
+        {
+            // pre-compact registry format: one output per line
+            var t = RefLearnType();
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+            t.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+
+            t.GetMethod("loadRegistryLine", flags).Invoke(null, new object[] { "MyObjectBuilder_Refinery/LargeRefinery;MyObjectBuilder_Ore/Stone;MyObjectBuilder_Component/Gravel;0.8" });
+            t.GetMethod("loadRegistryLine", flags).Invoke(null, new object[] { "MyObjectBuilder_Refinery/LargeRefinery;MyObjectBuilder_Ore/Stone;MyObjectBuilder_Ingot/Iron;0.02" });
+
+            var reloaded = Learned();
+            Assert.That(reloaded.ContainsKey(LargeRefineryDef), Is.True);
+            Assert.That((double)reloaded[LargeRefineryDef][Stone][Gravel], Is.EqualTo(0.8).Within(0.001));
+            Assert.That((double)reloaded[LargeRefineryDef][Stone][IronIngot], Is.EqualTo(0.02).Within(0.001),
+                "old per-output lines must still merge into one (refineryDef, ore) entry");
         }
 
         static bool RefLearnKnows(MyDefinitionId def, MyItemType ore)

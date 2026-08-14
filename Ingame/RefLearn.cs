@@ -84,8 +84,14 @@ namespace IngameScript
 				lastInput = null;
 				lastOutput = null;
 			}
-
-			// serializes the registry section (lines after the KTZREF; header)
+			// serializes the registry section (lines after the KTZREF; header).
+			// One line per (refinery def, input), all outputs on the same
+			// line as comma-separated pairs (the prefix is not repeated):
+			//   refDef;input;out1;r1,out2;r2,out3;r3
+			// MyDefinitionId.ToString() contains neither ',' nor ';', so the
+			// delimiters are unambiguous. Old-format lines (one output per
+			// line: refDef;input;output;ratio) still parse via
+			// loadRegistryLine (they are a single comma-chunk).
 			static public string writeRegistry()
 			{
 				StringBuilder sb = new StringBuilder();
@@ -93,43 +99,66 @@ namespace IngameScript
 				{
 					foreach (var oreKvp in defKvp.Value)
 					{
+						sb.Append('\n').Append(defKvp.Key.ToString())
+						  .Append(';').Append(oreKvp.Key.ToString());
+						bool first = true;
 						foreach (var outKvp in oreKvp.Value)
 						{
-							sb.Append('\n').Append(defKvp.Key.ToString())
-							  .Append(';').Append(oreKvp.Key.ToString())
-							  .Append(';').Append(outKvp.Key.ToString())
+							sb.Append(first ? ';' : ',').Append(outKvp.Key.ToString())
 							  .Append(';').Append(((double)outKvp.Value).ToString("0.###"));
+							first = false;
 						}
 					}
 				}
 				return sb.ToString();
 			}
 
-			// parses one registry line: refineryDef;input;output;ratio
+			// parses one registry line (new or old format):
+			//   new: refDef;input;out1;r1,out2;r2  (outputs comma-separated)
+			//   old: refDef;input;output;ratio    (a single comma-chunk)
 			static public void loadRegistryLine(string line)
 			{
-				var s2 = line.Split(';');
-				if (s2.Length < 4) return;
+				var chunks = line.Split(',');
+				if (chunks.Length < 1) return;
 				try
 				{
-					var refDef = MyDefinitionId.Parse(s2[0].Trim());
-					var input = MyItemType.Parse(s2[1].Trim());
-					var output = MyItemType.Parse(s2[2].Trim());
-					double ratio;
-					if (!double.TryParse(s2[3].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ratio)) return;
-					Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>> byOre;
-					if (!learned.TryGetValue(refDef, out byOre))
+					var first = chunks[0].Split(';');
+					if (first.Length < 4) return;
+					var refDef = MyDefinitionId.Parse(first[0].Trim());
+					var input = MyItemType.Parse(first[1].Trim());
+
+					// one line = one (refDef, input): all comma-chunks are
+					// output;ratio pairs of that single conversion
+					var outs = new Dictionary<MyItemType, MyFixedPoint>();
+					foreach (var chunk in chunks)
 					{
-						byOre = new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>();
-						learned[refDef] = byOre;
+						var parts = chunk.Split(';');
+						// every chunk ends in ...;output;ratio: the first
+						// chunk carries the refDef;input prefix (4+ parts),
+						// continuation chunks are bare output;ratio pairs
+						if (parts.Length < 2) continue;
+						double ratio;
+						if (!double.TryParse(parts[parts.Length - 1].Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ratio)) continue;
+						outs[MyItemType.Parse(parts[parts.Length - 2].Trim())] = (MyFixedPoint)ratio;
 					}
-					Dictionary<MyItemType, MyFixedPoint> outs;
-					if (!byOre.TryGetValue(input, out outs))
+					if (outs.Count == 0) return;
+
+					Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>> learnedOre;
+					if (!learned.TryGetValue(refDef, out learnedOre))
 					{
-						outs = new Dictionary<MyItemType, MyFixedPoint>();
-						byOre[input] = outs;
+						learnedOre = new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>();
+						learned[refDef] = learnedOre;
 					}
-					outs[output] = (MyFixedPoint)ratio;
+					// merge into the existing (refineryDef, input) entry:
+					// old-format lines are one output per line, so each
+					// subsequent line for the same input appends its output
+					Dictionary<MyItemType, MyFixedPoint> existing;
+					if (!learnedOre.TryGetValue(input, out existing))
+					{
+						existing = new Dictionary<MyItemType, MyFixedPoint>();
+						learnedOre[input] = existing;
+					}
+					foreach (var kvp in outs) existing[kvp.Key] = kvp.Value;
 				}
 				catch (Exception) { }
 			}

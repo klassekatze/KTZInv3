@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FakeItEasy;
 using NUnit.Framework;
 using Sandbox.ModAPI.Ingame;
@@ -385,8 +386,10 @@ namespace KTZInv3.Tests.Tests
 
             // serialize
             var registry = (string)learnType.GetMethod("writeRegistry", flags).Invoke(null, null);
-            Assert.That(registry, Does.Contain("MyObjectBuilder_Component/SteelPlate;MyObjectBuilder_Ingot/Iron;7"));
-            Assert.That(registry, Does.Contain("MyObjectBuilder_Component/SteelPlate;MyObjectBuilder_Ingot/Gold;1"));
+            Assert.That(registry, Does.Contain("MyObjectBuilder_Component/SteelPlate;MyObjectBuilder_Ingot/Iron;7,MyObjectBuilder_Ingot/Gold;1"),
+                "one line per item: all ingredients comma-separated on the same line");
+            Assert.That(registry.Split('\n').Count(l => l.Contains("MyObjectBuilder_Component/SteelPlate")), Is.EqualTo(1),
+                "the item prefix must not be repeated per ingredient");
 
             // wipe and reload
             learnType.GetField("known", flags).SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
