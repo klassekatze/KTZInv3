@@ -17,13 +17,17 @@ namespace IngameScript
 		/// passive because an unknown blueprint can't be enacted; refineries
 		/// are different - no hidden knowledge is needed to run one, so an
 		/// unknown (refinery type, ore) conversion can be actively discovered:
-		/// take an enabled refinery that accepts the ore, exclude it from
-		/// normal refinery management, lock it against the sorter, disable its
-		/// conveyor system, flush it, stuff it with the unknown ore, and let
-		/// RefLearn observe the resulting single-input windows. Once the
-		/// pattern is learned the refinery is released (UseConveyors restored,
-		/// unlocked, back under RefineryMgr) and the registry is written to
-		/// CustomData alongside the assembler blueprints.
+		/// every second the controller scans for an enabled refinery that
+		/// accepts an unknown ore (with enough in stock) and PREEMPTS it -
+		/// excludes it from normal refinery management, locks it against the
+		/// sorter, disables its conveyor system, flushes it, stuffs it with
+		/// the unknown ore, and lets RefLearn observe the resulting
+		/// single-input windows. Known recipes never block the scan; the
+		/// first unknown (refinery type, ore) pair wins, one discovery at a
+		/// time. Once the pattern is learned the refinery is released
+		/// (UseConveyors restored, unlocked, back under RefineryMgr) and the
+		/// registry is written to CustomData alongside the assembler
+		/// blueprints.
 		///
 		/// Knowledge is keyed by refinery BLOCK DEFINITION: a recipe learned
 		/// on a regular refinery does not satisfy a blast forge (e.g. SDX2

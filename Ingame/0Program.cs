@@ -25,13 +25,16 @@ namespace IngameScript
 		static bool MANAGE_REACTORS = true;//rebalance fuel across reactors (ReactorMgr) AND lock reactors in the sorter so
 											//it never moves fuel in/out of them. When false the reactor manager is disabled
 											//and reactors are sorted like any other container.
-		static bool REFINERY_LEARN = true;//enable isolated refinery recipe discovery (RefDiscover): when an
-											//enabled refinery accepts an ore we don't know the recipe for, the
-											//refinery is isolated (conveyors off, locked from the sorter, flushed),
-											//stuffed with the unknown ore, and observed until the conversion is
-											//learned. There is no continuous passive refinery learning - isolated
-											//discovery windows are the only ones trusted. When false the discovery
-											//controller is disabled.
+		static bool REFINERY_LEARN = true;//enable isolated refinery recipe discovery (RefDiscover): every
+										//second the controller scans for an ENABLED refinery that accepts
+										//an ore we don't know the recipe for (with >= 3000 in stock) and
+										//preempts it - the refinery is isolated (conveyors off, locked from
+										//the sorter, flushed), stuffed with the unknown ore, and observed
+										//until the conversion is learned. Known recipes never block the
+										//scan: the first unknown (refinery type, ore) pair wins, one at a
+										//time. There is no continuous passive refinery learning - isolated
+										//discovery windows are the only ones trusted. When false the
+										//discovery controller is disabled.
 		static bool ASM_DISCOVER = true;//enable isolated assembler recipe discovery (AsmDiscover): when we know
 										//an autocraft blueprint for an item and possess at least one copy of the
 										//item itself, an assembler is isolated (conveyors off, locked from the
