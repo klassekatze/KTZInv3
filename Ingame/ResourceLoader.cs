@@ -154,7 +154,7 @@ namespace IngameScript
 				gts.GetBlocksOfType(inventoryBlocks, b => b.HasInventory && b.HasPlayerAccess(p.Me.OwnerId));
 				yield return true;
 				step++;
-				if (neverFullyLoaded) log("BOOT DONE. "+tick+"t ("+(((float)tick)/60).ToString("0.0")+"s)", LT.LOG_N);
+				if (neverFullyLoaded) log("BOOT DONE. " + ((DateTime.Now - bootTime).TotalSeconds).ToString("0.00") + "s wall (" + tick + "t)", LT.LOG_N);
 				neverFullyLoaded = false;
 				step++;
 				yield return false;
