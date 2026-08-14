@@ -93,7 +93,20 @@ namespace IngameScript
 							//log("tick2=" + tick2, LT.LOG_N);
 							//tick2 = 0;
 
+							// Attribution rule (mirrors RefLearn): only learn
+							// from UNAMBIGUOUS windows. The assembler can
+							// complete several queue items within one
+							// 1-second observation (the game's production
+							// loop advances past items and produces whatever
+							// it can), so when MULTIPLE queue items changed
+							// (decreased or vanished) or MULTIPLE output
+							// types increased, the pairing would be
+							// arbitrary -> skip the window instead of
+							// learning a wrong association. This is what
+							// caused the fast-crafting mislearns (item linked
+							// to a different item's blueprint).
 							MyDefinitionId recipe = nop;
+							int queueChanges = 0;
 							//compare production queue to last known state.
 							//Check for any item with a decreased count or that has left the queue altogether
 							//and save it
@@ -107,75 +120,71 @@ namespace IngameScript
 										still_queued = true;
 										if (curitem.Amount < lastitem.Amount)
 										{
-											recipe = lastitem.BlueprintId;
-											break;
+											queueChanges++;
+											if (queueChanges == 1) recipe = lastitem.BlueprintId;
 										}
+										break;
 									}
 								}
-								if (recipe != nop) break;
-
 								if (!still_queued)
 								{
-									recipe = lastitem.BlueprintId;
-									break;
+									queueChanges++;
+									if (queueChanges == 1) recipe = lastitem.BlueprintId;
 								}
 							}
 
-							if (recipe != nop)
+							// only if exactly one queue item changed is the
+							// output attributable; then it must also be
+							// exactly one output type that increased
+							MyDefinitionId itemdef = nop;
+							int outputIncreases = 0;
+							if (queueChanges == 1 && recipe != nop)
 							{
-
-								//assuming we found the above, check for a newly appearing or count-increased item in the output inventory.
-								//if progress has reset, a production order has shrunk or vanished, and a new item has appeared,
+								//check for a newly appearing or count-increased item in the output inventory.
+								//if a production order has shrunk or vanished, and a new item has appeared,
 								///we can reasonably assume that the production order blueprint generates that item.
-								MyDefinitionId itemdef = nop;
 								foreach (var i in items)
 								{
 									bool newitem = true;
+									bool increased = false;
 									foreach (var o in lastItems)
 									{
-										if (o.Type == i.Type) newitem = false;
-
-										if (o.Type == i.Type && o.Amount < i.Amount)
+										if (o.Type == i.Type)
+										{
+											newitem = false;
+											if (o.Amount < i.Amount)
+											{
+												increased = true;
+												break;
+											}
+										}
+									}
+									if (newitem || increased)
+									{
+										outputIncreases++;
+										if (outputIncreases == 1)
 										{
 											try
 											{
-												var n = MyDefinitionId.Parse(i.Type.TypeId + "/" + i.Type.SubtypeId);
-												itemdef = n;
-												newitem = false;
-												break;
+												itemdef = MyDefinitionId.Parse(i.Type.TypeId + "/" + i.Type.SubtypeId);
 											}
 											catch (Exception) { }
 										}
-										//if (itembp != nop) break;
 									}
-
-
-									//if we found no increased item (the bp is nop) but we did notice a new kind of item, it's that one
-									if (newitem)// && itembp == nop)
-									{
-										try
-										{
-											var n = MyDefinitionId.Parse(i.Type.TypeId + "/" + i.Type.SubtypeId);
-											itemdef = n;
-										}
-										catch (Exception) { }
-									}
-									if (itemdef != nop) break;
 								}
-								if (recipe != nop && itemdef != nop)
-								{
-									lastCraft = tick;
-									if (!Autocraft.blueprints.ContainsKey(itemdef))
-									{
-										log("Learned recipe " + itemdef.ToString() + ";" + recipe.ToString(), LT.LOG_N);
-										Autocraft.addBP(itemdef, recipe);
-									}
-									//Autocraft.blueprints[itemdef] = recipe;
-									//todo:flush output inventory here
-
-								}
-
 							}
+							if (recipe != nop && itemdef != nop && queueChanges == 1 && outputIncreases == 1)
+							{
+								lastCraft = tick;
+								if (!Autocraft.blueprints.ContainsKey(itemdef))
+								{
+									log("Learned recipe " + itemdef.ToString() + ";" + recipe.ToString(), LT.LOG_N);
+									Autocraft.addBP(itemdef, recipe);
+								}
+								//Autocraft.blueprints[itemdef] = recipe;
+								//todo:flush output inventory here
+							}
+
 						}
 					}
 					if (lastQueue.Count == 0) curProg = 0;
