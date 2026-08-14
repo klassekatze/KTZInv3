@@ -91,19 +91,41 @@ namespace IngameScript
 				// holds one fuel type in slot 0, but different reactors may burn
 				// different fuels (SDX2: UraniumItem, UraniumB, sdx_itemReactorFuel),
 				// so only reactors sharing a fuel type are balanced against each
-				// other. Empty reactors join the group only when exactly one fuel
-				// type exists on the grid (that's the empty-reactor alignment fix);
-				// with mixed fuels their fuel type is unknowable, so they are left
-				// to the conveyor/priming systems.
+				// other. Empty reactors are assigned to a group by what their
+				// inventory accepts (GetAcceptedItems) - a reactor only accepts
+				// the fuels it can burn, so an empty reactor's fuel type is
+				// knowable even on a mixed-fuel grid.
 				if (n > 1 && totalFuel > 0 && fuelType.HasValue)
 				{
 					// group reactor indices by their slot-0 fuel type
 					Dictionary<MyItemType, List<int>> groups = new Dictionary<MyItemType, List<int>>();
-					bool singleFuelType = fuelByType.Count == 1;
 					for (int i = 0; i < n; i++)
 					{
-						MyItemType t = hasFuel[i] ? fuelTypes[i] : fuelType.Value;
-						if (!hasFuel[i] && !singleFuelType) continue; // unknown fuel with mixed grid
+						MyItemType t;
+						if (hasFuel[i])
+						{
+							t = fuelTypes[i];
+						}
+						else
+						{
+							// empty reactor: find the first fuel type it accepts
+							// that is actually present on the grid; if it accepts
+							// nothing we have fuel for, skip it entirely
+							List<MyItemType> accepted = new List<MyItemType>();
+							Program.reactors[i].GetInventory().GetAcceptedItems(accepted);
+							t = default(MyItemType);
+							bool found = false;
+							foreach (var at in accepted)
+							{
+								if (fuelByType.ContainsKey(at))
+								{
+									t = at;
+									found = true;
+									break;
+								}
+							}
+							if (!found) continue;
+						}
 						if (!groups.ContainsKey(t)) groups[t] = new List<int>();
 						groups[t].Add(i);
 					}
