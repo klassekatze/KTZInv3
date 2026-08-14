@@ -5,7 +5,10 @@ using FakeItEasy;
 using NUnit.Framework;
 using Sandbox.ModAPI.Ingame;
 using VRage;
+using VRage.Game;
 using VRage.Game.ModAPI.Ingame;
+using VRage.ObjectBuilders;
+using Sandbox.Common.ObjectBuilders;
 using KTZInv3.Tests.TestUtilities;
 
 namespace KTZInv3.Tests.Tests
@@ -28,6 +31,10 @@ namespace KTZInv3.Tests.Tests
         static readonly MyItemType Gravel = new MyItemType("MyObjectBuilder_Component", "Gravel");
         static readonly MyItemType Nickel = new MyItemType("MyObjectBuilder_Ingot", "Nickel");
         static readonly MyItemType Silicon = new MyItemType("MyObjectBuilder_Ingot", "Silicon");
+
+        // the block definition of the fake refineries; the learner keys its
+        // learned recipes by this, so a second def would learn independently
+        static readonly MyDefinitionId LargeRefineryDef = new MyDefinitionId(typeof(MyObjectBuilder_Refinery), "LargeRefinery");
 
         IngameScript.Program _program;
 
@@ -56,16 +63,19 @@ namespace KTZInv3.Tests.Tests
         {
             var t = RefLearnType();
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
-            t.GetField("learned", flags).SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
-            t.GetField("consumedTotal", flags).SetValue(null, new Dictionary<MyItemType, MyFixedPoint>());
-            t.GetField("producedTotal", flags).SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
+            t.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+            t.GetField("consumedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, MyFixedPoint>>());
+            t.GetField("producedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+            // allLearners is List<RefLearn> (private nested type) — build via reflection
+            var learnerListType = typeof(System.Collections.Generic.List<>).MakeGenericType(RefLearnType());
+            t.GetField("allLearners", flags).SetValue(null, Activator.CreateInstance(learnerListType));
         }
 
         static Type RefLearnType()
             => typeof(IngameScript.Program).GetNestedType("RefLearn", System.Reflection.BindingFlags.NonPublic);
 
-        static Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>> Learned()
-            => (Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>)RefLearnType()
+        static Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>> Learned()
+            => (Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>)RefLearnType()
                 .GetField("learned", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
                 .GetValue(null);
 
@@ -77,6 +87,7 @@ namespace KTZInv3.Tests.Tests
             var refinery = A.Fake<IMyRefinery>();
             A.CallTo(() => refinery.InputInventory).Returns(input);
             A.CallTo(() => refinery.OutputInventory).Returns(output);
+            A.CallTo(() => refinery.BlockDefinition).Returns((SerializableDefinitionId)LargeRefineryDef);
             return (refinery, input, output);
         }
 
@@ -128,9 +139,10 @@ namespace KTZInv3.Tests.Tests
             learner.Update();
 
             var learned = Learned();
-            Assert.That(learned.ContainsKey(IronOre), Is.True, "iron ore conversion should be learned");
-            Assert.That(learned[IronOre].ContainsKey(IronIngot), Is.True);
-            Assert.That((double)learned[IronOre][IronIngot], Is.EqualTo(0.7).Within(0.001),
+            Assert.That(learned.ContainsKey(LargeRefineryDef), Is.True, "recipe should be learned for this refinery def");
+            Assert.That(learned[LargeRefineryDef].ContainsKey(IronOre), Is.True, "iron ore conversion should be learned");
+            Assert.That(learned[LargeRefineryDef][IronOre].ContainsKey(IronIngot), Is.True);
+            Assert.That((double)learned[LargeRefineryDef][IronOre][IronIngot], Is.EqualTo(0.7).Within(0.001),
                 "ratio should be produced/consumed = 49/70");
         }
 
@@ -154,11 +166,12 @@ namespace KTZInv3.Tests.Tests
             learner.Update();
 
             var learned = Learned();
-            Assert.That(learned.ContainsKey(Stone), Is.True, "stone conversion should be learned");
-            Assert.That((double)learned[Stone][Gravel], Is.EqualTo(0.8).Within(0.001));
-            Assert.That((double)learned[Stone][IronIngot], Is.EqualTo(0.02).Within(0.001));
-            Assert.That((double)learned[Stone][Nickel], Is.EqualTo(0.01).Within(0.001));
-            Assert.That((double)learned[Stone][Silicon], Is.EqualTo(0.03).Within(0.001));
+            Assert.That(learned.ContainsKey(LargeRefineryDef), Is.True, "stone recipe should be learned for this refinery def");
+            Assert.That(learned[LargeRefineryDef].ContainsKey(Stone), Is.True, "stone conversion should be learned");
+            Assert.That((double)learned[LargeRefineryDef][Stone][Gravel], Is.EqualTo(0.8).Within(0.001));
+            Assert.That((double)learned[LargeRefineryDef][Stone][IronIngot], Is.EqualTo(0.02).Within(0.001));
+            Assert.That((double)learned[LargeRefineryDef][Stone][Nickel], Is.EqualTo(0.01).Within(0.001));
+            Assert.That((double)learned[LargeRefineryDef][Stone][Silicon], Is.EqualTo(0.03).Within(0.001));
         }
 
         [Test]
@@ -211,8 +224,8 @@ namespace KTZInv3.Tests.Tests
             learner.Update();
 
             var learned = Learned();
-            Assert.That(learned.ContainsKey(IronOre), Is.True);
-            Assert.That((double)learned[IronOre][IronIngot], Is.EqualTo(0.7).Within(0.001),
+            Assert.That(learned.ContainsKey(LargeRefineryDef), Is.True);
+            Assert.That((double)learned[LargeRefineryDef][IronOre][IronIngot], Is.EqualTo(0.7).Within(0.001),
                 "rolling ratio (70+49)/(100+30)... should converge to 0.7");
         }
 
@@ -233,5 +246,80 @@ namespace KTZInv3.Tests.Tests
 
             Assert.That(Learned().Count, Is.Zero);
         }
+
+        [Test]
+        public void DifferentRefineryDefs_LearnIndependently()
+        {
+            // the blast-forge scenario: knowledge is keyed by refinery block
+            // definition, so a recipe learned on a regular refinery does NOT
+            // satisfy a different refinery type (SDX2 gives boron only from
+            // the blast forge for stone). Modded refineries reuse the
+            // MyObjectBuilder_Refinery OB type with a different subtype.
+            var blastForgeDef = new MyDefinitionId(typeof(Sandbox.Common.ObjectBuilders.MyObjectBuilder_Refinery), "BlastFurnace");
+
+            var (refinery, input, output) = MakeRefinery();
+            var blastRefinery = A.Fake<IMyRefinery>();
+            A.CallTo(() => blastRefinery.InputInventory).Returns(input);
+            A.CallTo(() => blastRefinery.OutputInventory).Returns(output);
+            A.CallTo(() => blastRefinery.BlockDefinition).Returns((SerializableDefinitionId)blastForgeDef);
+
+            // learn iron ore on the regular refinery only
+            input.AddItem(IronOre, (MyFixedPoint)100);
+            Tick();
+            var learner = RunUpdate(refinery); // baseline
+            input.Clear();
+            input.AddItem(IronOre, (MyFixedPoint)30);
+            output.AddItem(IronIngot, (MyFixedPoint)49);
+            Tick();
+            learner.Update();
+
+            var learned = Learned();
+            Assert.That(learned.ContainsKey(LargeRefineryDef), Is.True);
+            Assert.That(learned.ContainsKey(blastForgeDef), Is.False,
+                "blast forge must not inherit the regular refinery's recipe");
+            Assert.That(RefLearnKnows(blastForgeDef, IronOre), Is.False);
+            Assert.That(RefLearnKnows(LargeRefineryDef, IronOre), Is.True);
+        }
+
+        [Test]
+        public void Registry_RoundTripsThroughWriteAndLoad()
+        {
+            // learn a multi-output recipe, serialize it, wipe, reload, verify
+            var (refinery, input, output) = MakeRefinery();
+            input.AddItem(Stone, (MyFixedPoint)100);
+            Tick();
+            var learner = RunUpdate(refinery); // baseline
+            input.Clear();
+            output.AddItem(Gravel, (MyFixedPoint)80);
+            output.AddItem(IronIngot, (MyFixedPoint)2);
+            Tick();
+            learner.Update();
+
+            var t = RefLearnType();
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+            var registry = (string)t.GetMethod("writeRegistry").Invoke(null, null);
+            Assert.That(registry, Does.Contain("MyObjectBuilder_Refinery/LargeRefinery"), "registry must include the refinery def");
+            Assert.That(registry, Does.Contain("Stone"), "registry must include the input ore");
+            Assert.That(registry, Does.Contain("Gravel"), "registry must include the output");
+
+            // wipe and reload
+            t.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+            Assert.That(Learned().Count, Is.Zero);
+
+            foreach (var line in registry.Split('\n'))
+            {
+                if (line.Trim().Length == 0) continue;
+                t.GetMethod("loadRegistryLine").Invoke(null, new object[] { line });
+            }
+
+            var reloaded = Learned();
+            Assert.That(reloaded.ContainsKey(LargeRefineryDef), Is.True);
+            Assert.That((double)reloaded[LargeRefineryDef][Stone][Gravel], Is.EqualTo(0.8).Within(0.001),
+                "ratio must survive the registry round-trip");
+        }
+
+        static bool RefLearnKnows(MyDefinitionId def, MyItemType ore)
+            => (bool)RefLearnType().GetMethod("knowsRecipe", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Invoke(null, new object[] { def, ore });
     }
 }

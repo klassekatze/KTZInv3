@@ -102,6 +102,14 @@ namespace IngameScript
 
 				if (refi < Program.refineries.Count)
 				{
+					// a refinery being used for recipe discovery is excluded
+					// from normal management: RefDiscover flushed and stuffed
+					// it, so top-up/expel here would fight the observation
+					if (RefDiscover.isDiscovering(Program.refineries[refi]))
+					{
+						refi++;
+						return;
+					}
 
 					computeFactors();
 					if (availOrePriority.Count == 0) return;

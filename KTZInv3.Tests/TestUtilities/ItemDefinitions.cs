@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Sandbox.Common.ObjectBuilders;
 using Sandbox.Definitions;
 using VRage;
 using VRage.Game;
@@ -49,6 +50,9 @@ namespace KTZInv3.Tests.TestUtilities
                 // through the object-builder registry, which the game populates at
                 // startup. Register the real OB types headless.
                 MyObjectBuilderType.RegisterFromAssembly(typeof(MyObjectBuilder_Component).Assembly, registerLegacyNames: true);
+                // block OBs (refineries etc.) live in SpaceEngineers.ObjectBuilders.dll;
+                // needed by the refinery recipe registry round-trip tests
+                MyObjectBuilderType.RegisterFromAssembly(typeof(MyObjectBuilder_Refinery).Assembly, registerLegacyNames: true);
 
                 var dict = GetDefinitionsById(manager);
                 foreach (var def in BuildDefinitions())

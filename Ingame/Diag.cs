@@ -124,6 +124,7 @@ namespace IngameScript
 			Reactor,
 			Conduit,
 			RefLearn,
+			RefDiscover,
 		}
 
 		/// <summary>

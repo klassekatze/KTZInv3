@@ -58,6 +58,10 @@ namespace IngameScript
 				{
 					newcd += "\n" + kvp.Key.ToString() + ";" + kvp.Value.ToString();
 				}
+				// refinery recipe registry (read back by the ctor alongside the
+				// assembler bps)
+				newcd += "\nKTZREF;";
+				newcd += RefLearn.writeRegistry();
 				gProgram.Me.CustomData = newcd;
 			}
 
@@ -66,8 +70,19 @@ namespace IngameScript
 			{
 				var cd = gProgram.Me.CustomData;
 				var spl = cd.Split('\n');
+				bool inRefSection = false;
 				foreach(var l in spl)
 				{
+					if (l.StartsWith("KTZREF;"))
+					{
+						inRefSection = true;
+						continue;
+					}
+					if (inRefSection)
+					{
+						RefLearn.loadRegistryLine(l);
+						continue;
+					}
 					var s2 = l.Split(';');
 					if(s2.Length >= 2)
 					{

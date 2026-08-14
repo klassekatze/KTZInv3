@@ -238,6 +238,7 @@ namespace IngameScript
 		static Autocraft gAutocraft = null;
 		static AssemblerMgr gAssemblerMgr = null;
 		static RefineryMgr gRefineryMgr = null;
+		static RefDiscover gRefDiscover = null;
 		static ReactorMgr gReactorMgr = null;
 
 		public string mainArg = "";
@@ -400,6 +401,7 @@ namespace IngameScript
 				gInv.updateContainers(inventoryBlocks);
 				gAssemblerMgr = new AssemblerMgr();
 				gRefineryMgr = new RefineryMgr();
+				gRefDiscover = new RefDiscover();
 				gAutocraft = new Autocraft();
 				gReactorMgr = new ReactorMgr();
 				log("Basic structures initialized.");
@@ -420,6 +422,9 @@ namespace IngameScript
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Refinery) : false; }
 			gRefineryMgr.update();
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Refinery) : false; }
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.RefDiscover) : false; }
+			gRefDiscover.update();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.RefDiscover) : false; }
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Reactor) : false; }
 			gReactorMgr.update();
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Reactor) : false; }

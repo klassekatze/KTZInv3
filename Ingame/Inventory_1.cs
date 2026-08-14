@@ -411,6 +411,9 @@ namespace IngameScript
 						// active: sorter moves in/out would pollute the observed
 						// inventory deltas and corrupt the learned conversions.
 						if (REFINERY_LEARN && b is IMyRefinery) _locked();
+						// a refinery being used for recipe discovery (RefDiscover)
+						// stays locked even if it is renamed mid-discovery
+						if (RefDiscover.isDiscovering(b)) _locked();
 						//if (hiddenBlockTypes.Contains(b.DefinitionDisplayNameText)) _hidden();
 
 						if (!hidden)
