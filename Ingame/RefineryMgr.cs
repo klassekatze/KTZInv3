@@ -17,6 +17,9 @@ namespace IngameScript
 		class RefineryMgr
 		{
 			List<MyItemType> orePriority = new List<MyItemType>();
+			// per-refinery observational learners (ore -> ingot conversions,
+			// with ratios; supports multi-output ores like stone)
+			List<RefLearn> refLearners = new List<RefLearn>();
 			public RefineryMgr()
 			{
 				foreach(var ore in gProgram.orePriorityOrder)
@@ -26,6 +29,12 @@ namespace IngameScript
 						var type = Inventory.getType("MyObjectBuilder_Ore", ore);
 						orePriority.Add(type);
 					}catch(Exception){ }
+				}
+				foreach (var r in Program.refineries)
+				{
+					var l = new RefLearn();
+					l.machine = r;
+					refLearners.Add(l);
 				}
 			}
 
@@ -73,6 +82,7 @@ namespace IngameScript
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+				foreach (var l in refLearners) l.update();
 				if (tick % 60 == 0)
 				{
 					refWorking = refIdle = 0;

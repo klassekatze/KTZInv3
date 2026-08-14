@@ -407,6 +407,10 @@ namespace IngameScript
 						// fuel balancing: the sorter must never move fuel in or
 						// out of them, or it fights the ReactorMgr average.
 						if (MANAGE_REACTORS && b is IMyReactor) _locked();
+						// refineries are locked while the refinery learner is
+						// active: sorter moves in/out would pollute the observed
+						// inventory deltas and corrupt the learned conversions.
+						if (REFINERY_LEARN && b is IMyRefinery) _locked();
 						//if (hiddenBlockTypes.Contains(b.DefinitionDisplayNameText)) _hidden();
 
 						if (!hidden)

@@ -123,6 +123,7 @@ namespace IngameScript
 			Refinery,
 			Reactor,
 			Conduit,
+			RefLearn,
 		}
 
 		/// <summary>

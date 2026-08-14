@@ -25,6 +25,10 @@ namespace IngameScript
 		static bool MANAGE_REACTORS = true;//rebalance fuel across reactors (ReactorMgr) AND lock reactors in the sorter so
 											//it never moves fuel in/out of them. When false the reactor manager is disabled
 											//and reactors are sorted like any other container.
+		static bool REFINERY_LEARN = true;//observe refineries (RefLearn) to learn ore->ingot conversions, AND lock
+											//refineries in the sorter so sorter moves never pollute the observed
+											//inventory deltas. When false the learner is disabled and refineries
+											//are sorted like any other container.
 
 		//static bool ASM_FLUSH = false;//whether to periodically clear inputs of an assembler that is not producing
 		static bool ASM_SHUFFLE = false;//whether to periodically move the first item to back of queue if not producing
