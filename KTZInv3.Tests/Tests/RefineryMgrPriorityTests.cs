@@ -14,15 +14,19 @@ using KTZInv3.Tests.TestUtilities;
 namespace KTZInv3.Tests.Tests
 {
     /// <summary>
-    /// RefineryMgr ore priority derived from the assembler queues. Only the
-    /// LEADING (first) queue item of each ASSEMBLY-mode assembler counts
-    /// (an assembler cannot start subsequent items until the head
-    /// completes), only items with a KNOWN composition (AsmLearn, learned
-    /// by disassembly) contribute, only ingot ingredients matter (refineries
-    /// make ingots, not components), and the ingot demand is mapped to ore
-    /// demand through the learned refinery recipes (RefLearn). When there is
-    /// queue demand it LEADS the ordering; the static orePriorityOrder
-    /// follows as fallback for ores with no current demand.
+    /// RefineryMgr ore priority derived from the assembler queues. Each
+    /// ASSEMBLY-mode assembler's queue is walked from the head: a stack
+    /// whose ingot needs are already covered by stock gives the refineries
+    /// "nothing to do", so it is skipped and the NEXT stack is considered.
+    /// The first stack with a real gap contributes its per-ingot SHORTFALL
+    /// (not the full need), and satisfied stacks reserve their full need
+    /// against a working stock copy so two assemblers queueing the same
+    /// item both count. Only items with a KNOWN composition (AsmLearn,
+    /// learned by disassembly) contribute; only ingot ingredients matter
+    /// (refineries make ingots, not components). Ingot shortfall maps to
+    /// ore demand through the learned refinery recipes (RefLearn). When
+    /// there is queue demand it LEADS the ordering; the static
+    /// orePriorityOrder follows as fallback.
     /// </summary>
     [TestFixture]
     public class RefineryMgrPriorityTests
@@ -74,6 +78,12 @@ namespace KTZInv3.Tests.Tests
 
         static void SetAssemblers(List<IMyAssembler> list)
             => typeof(IngameScript.Program).GetField("assemblers", NF).SetValue(null, list);
+
+        static void SetIngotStock(params (MyItemType ingot, double amount)[] stock)
+        {
+            foreach (var (ingot, amount) in stock)
+                IngameScript.Program.Inventory.globalManifest.stuff[ingot] = (MyFixedPoint)amount;
+        }
 
         static void SeedBlueprint(MyItemType item, MyDefinitionId bp)
         {
@@ -274,6 +284,112 @@ namespace KTZInv3.Tests.Tests
 
             Assert.That(priority, Is.EqualTo(new List<MyItemType> { IronOre, GoldOre }),
                 "20 SteelPlate across two assemblers: iron (140/0.7=200) still leads gold (20/0.5=40)");
+        }
+
+        // ---- queue walking: satisfied heads give refineries nothing to do ----
+
+        [Test]
+        public void SatisfiedHead_UsesNextQueueItem()
+        {
+            // head: 10 SteelPlate (70 iron + 10 gold) - fully in stock, so
+            // the refineries have nothing to do for it; the NEXT stack
+            // (Motor, nickel) must drive the priority instead
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            queue.Add(new MyProductionItem(1, MotorBp, (MyFixedPoint)5));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+            SeedBlueprint(Motor, MotorBp);
+            SeedComposition(SteelPlate, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { GoldIngot, (MyFixedPoint)1 } });
+            SeedComposition(Motor, new Dictionary<MyItemType, MyFixedPoint> {
+                { NickelIngot, (MyFixedPoint)10 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (GoldOre, GoldIngot, 0.5),
+                (NickelOre, NickelIngot, 0.8));
+            SetIngotStock((IronIngot, 70), (GoldIngot, 10));
+
+            var priority = ComputeQueueOrePriority();
+
+            Assert.That(priority, Is.EqualTo(new List<MyItemType> { NickelOre }),
+                "satisfied head (SteelPlate) must be skipped; Motor's nickel demand leads");
+        }
+
+        [Test]
+        public void SatisfiedHead_SubtractsItsIngots_BeforeNextGap()
+        {
+            // head: 10 SteelPlate needs 70 iron + 10 gold; stock has only 50
+            // iron + 10 gold -> the head itself is UNSATISFIED (iron gap 20)
+            // but the satisfied gold portion must be subtracted from the
+            // working stock before the next stack's gap is computed. With
+            // only one stack the demand is the head's own shortfall.
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+            SeedComposition(SteelPlate, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { GoldIngot, (MyFixedPoint)1 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (GoldOre, GoldIngot, 0.5));
+            SetIngotStock((IronIngot, 50), (GoldIngot, 10));
+
+            var priority = ComputeQueueOrePriority();
+
+            // iron gap 20 (70-50), gold gap 0 (10-10) -> only iron demand
+            Assert.That(priority, Is.EqualTo(new List<MyItemType> { IronOre }));
+        }
+
+        [Test]
+        public void TwoAssemblers_ReserveSatisfiedStock_BeforeSecondGap()
+        {
+            // two assemblers both queueing 10 SteelPlate (7 iron + 1 gold
+            // each = 140 iron + 20 gold total). Stock: 100 iron + 0 gold.
+            // With reservation the first assembler's satisfied iron need
+            // (70) is subtracted before the second assembler's gap is
+            // computed: iron gap = 140-100 = 40 -> 57 ore demand, gold gap
+            // = 20 -> 40 ore demand -> [IronOre, GoldOre]. Without
+            // reservation both assemblers would see 100 iron >= 70 and be
+            // "satisfied", leaving only gold demand -> [GoldOre].
+            var (asm1, q1) = MakeAssembler(MyAssemblerMode.Assembly);
+            q1.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            var (asm2, q2) = MakeAssembler(MyAssemblerMode.Assembly);
+            q2.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm1, asm2 });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+            SeedComposition(SteelPlate, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { GoldIngot, (MyFixedPoint)1 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (GoldOre, GoldIngot, 0.5));
+            SetIngotStock((IronIngot, 100));
+
+            var priority = ComputeQueueOrePriority();
+
+            Assert.That(priority, Is.EqualTo(new List<MyItemType> { IronOre, GoldOre }),
+                "first assembler's satisfied iron need must be reserved before the second assembler's gap (iron 40 > gold 20)");
+        }
+
+        [Test]
+        public void AllSatisfied_FallsBackToStatic()
+        {
+            // every queued stack's ingots are in stock -> no refinery work
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+            SeedComposition(SteelPlate, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { GoldIngot, (MyFixedPoint)1 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (GoldOre, GoldIngot, 0.5));
+            SetIngotStock((IronIngot, 100), (GoldIngot, 20));
+
+            var priority = ComputeQueueOrePriority();
+
+            Assert.That(priority.Count, Is.EqualTo(0),
+                "all queued stacks satisfied -> no demand -> static fallback");
         }
 
         // ---- integration through computeFactors ----

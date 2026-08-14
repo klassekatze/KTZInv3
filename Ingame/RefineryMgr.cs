@@ -79,7 +79,21 @@ namespace IngameScript
 			// queues are about to consume, highest demand first
 			static List<MyItemType> computeQueueOrePriority()
 			{
-				// 1. ingot demand from the queue heads (Assembly mode only)
+				// working copy of the ingot stock. As queues are walked in
+				// order, satisfied stacks RESERVE their full need against it
+				// (the assembler will consume those ingots), so the next
+				// stack only sees what is actually left - two assemblers
+				// queueing the same item both contribute their shortfall.
+				Dictionary<MyItemType, double> workingStock = new Dictionary<MyItemType, double>();
+				foreach (var kvp in Inventory.globalManifest.stuff)
+					workingStock[kvp.Key] = (double)kvp.Value;
+
+				// 1. ingot shortfall from the assembler queues (Assembly
+				// mode only). Walk each queue from the head: an item whose
+				// ingot needs are already covered gives the refineries
+				// "nothing to do", so it is skipped and the NEXT stack is
+				// considered. The first item with a real gap contributes its
+				// per-ingot shortfall (not the full need) and the walk stops.
 				Dictionary<MyItemType, double> ingotDemand = new Dictionary<MyItemType, double>();
 				for (int i = 0; i < Program.assemblers.Count; i++)
 				{
@@ -88,18 +102,47 @@ namespace IngameScript
 					if (AsmDiscover.isDiscovering(asm)) continue;
 					List<MyProductionItem> queue = new List<MyProductionItem>();
 					asm.GetQueue(queue);
-					if (queue.Count == 0) continue;
-					var head = queue[0]; // only the leading stack can be produced right now
-					MyItemType item;
-					if (!itemForBlueprint(head.BlueprintId, out item)) continue;
-					var comp = AsmLearn.compositionFor(item);
-					if (comp.Count == 0) continue; // unknown composition -> skip
-					foreach (var ing in comp)
+					for (int q = 0; q < queue.Count; q++)
 					{
-						if (!ing.Key.GetItemInfo().IsIngot) continue; // refineries make ingots, not components
-						double d;
-						ingotDemand.TryGetValue(ing.Key, out d);
-						ingotDemand[ing.Key] = d + (double)head.Amount * (double)ing.Value;
+						MyItemType item;
+						if (!itemForBlueprint(queue[q].BlueprintId, out item)) continue;
+						var comp = AsmLearn.compositionFor(item);
+						if (comp.Count == 0) continue; // unknown composition -> skip this stack
+						bool satisfied = true;
+						Dictionary<MyItemType, double> shortfall = new Dictionary<MyItemType, double>();
+						foreach (var ing in comp)
+						{
+							if (!ing.Key.GetItemInfo().IsIngot) continue; // refineries make ingots, not components
+							double needed = (double)queue[q].Amount * (double)ing.Value;
+							double stock = 0;
+							workingStock.TryGetValue(ing.Key, out stock);
+							if (stock < 0) stock = 0; // previous reservations may have gone negative
+							double gap = needed - stock;
+							if (gap > 0)
+							{
+								satisfied = false;
+								shortfall[ing.Key] = gap;
+							}
+						}
+						// reserve this stack's full need regardless: satisfied
+						// stacks consume their ingots, unsatisfied ones will
+						// once the refineries produce them
+						foreach (var ing in comp)
+						{
+							if (!ing.Key.GetItemInfo().IsIngot) continue;
+							double need = (double)queue[q].Amount * (double)ing.Value;
+							double cur;
+							workingStock.TryGetValue(ing.Key, out cur);
+							workingStock[ing.Key] = cur - need;
+						}
+						if (satisfied) continue; // refineries have nothing to do for this stack
+						foreach (var kvp in shortfall)
+						{
+							double d;
+							ingotDemand.TryGetValue(kvp.Key, out d);
+							ingotDemand[kvp.Key] = d + kvp.Value;
+						}
+						break; // first unsatisfied stack drives this assembler's demand
 					}
 				}
 				if (ingotDemand.Count == 0) return new List<MyItemType>();
