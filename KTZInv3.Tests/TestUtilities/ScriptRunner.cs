@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Sandbox.ModAPI.Ingame;
+using VRage;
+using VRage.Game;
 using VRage.Game.ModAPI.Ingame;
 
 namespace KTZInv3.Tests.TestUtilities
@@ -121,6 +124,40 @@ namespace KTZInv3.Tests.TestUtilities
             {
                 var f = pType.GetField(name, flags);
                 if (f != null && !f.FieldType.IsValueType) f.SetValue(null, null);
+            }
+            // discovery + learning STATIC state (held on the nested classes, not
+            // the manager singletons): a discovery left in-flight by an earlier
+            // test would make update() enter the discovery branch and skip the
+            // once-per-second scan; leftover registry entries would change what
+            // the queue walk / discovery scan see. Clear them for hermetic tests.
+            var asmDiscType = pType.GetNestedType("AsmDiscover", BindingFlags.NonPublic);
+            if (asmDiscType != null)
+            {
+                asmDiscType.GetField("discAssembler", flags)?.SetValue(null, null);
+                asmDiscType.GetField("inBaseline", flags)?.SetValue(null, null);
+            }
+            var refDiscType = pType.GetNestedType("RefDiscover", BindingFlags.NonPublic);
+            if (refDiscType != null)
+            {
+                refDiscType.GetField("discRefinery", flags)?.SetValue(null, null);
+                refDiscType.GetField("discLearner", flags)?.SetValue(null, null);
+            }
+            var refLearnType = pType.GetNestedType("RefLearn", BindingFlags.NonPublic);
+            if (refLearnType != null)
+            {
+                refLearnType.GetField("learned", flags)?.SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+                refLearnType.GetField("consumedTotal", flags)?.SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, MyFixedPoint>>());
+                refLearnType.GetField("producedTotal", flags)?.SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
+            }
+            var asmLearnType = pType.GetNestedType("AsmLearn", BindingFlags.NonPublic);
+            if (asmLearnType != null)
+            {
+                asmLearnType.GetField("known", flags)?.SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
+            }
+            var autocraftType = pType.GetNestedType("Autocraft", BindingFlags.NonPublic);
+            if (autocraftType != null)
+            {
+                autocraftType.GetField("blueprints", flags)?.SetValue(null, new Dictionary<MyDefinitionId, MyDefinitionId>());
             }
             var loggerType = typeof(IngameScript.Program).GetNestedType("Logger", System.Reflection.BindingFlags.NonPublic)
                 ?? AppDomain.CurrentDomain.GetAssemblies()

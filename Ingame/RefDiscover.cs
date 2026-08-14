@@ -93,7 +93,9 @@ namespace IngameScript
 
 				// scan for a candidate at most once per second
 				if (tick % 60 != 0) return;
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.RefScan) : false; }
 				startNextDiscovery();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.RefScan) : false; }
 			}
 
 			void startNextDiscovery()

@@ -3,9 +3,15 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using FakeItEasy;
 using NUnit.Framework;
+using Sandbox.Common.ObjectBuilders;
 using Sandbox.ModAPI.Ingame;
 using VRage;
+using VRage.Game;
+using VRage.Game.ModAPI.Ingame;
+using VRage.ObjectBuilders;
 using KTZInv3.Tests.TestUtilities;
 
 namespace KTZInv3.Tests.Tests
@@ -24,6 +30,42 @@ namespace KTZInv3.Tests.Tests
     [TestFixture]
     public class DiagProfilingTests
     {
+        static readonly MyItemType IronOre = new MyItemType("MyObjectBuilder_Ore", "Iron");
+        static readonly MyItemType CopperOre = new MyItemType("MyObjectBuilder_Ore", "Copper");
+        static readonly MyItemType LeadOre = new MyItemType("MyObjectBuilder_Ore", "Lead");
+        static readonly MyItemType NickelOre = new MyItemType("MyObjectBuilder_Ore", "Nickel");
+        static readonly MyItemType SiliconOre = new MyItemType("MyObjectBuilder_Ore", "Silicon");
+        static readonly MyItemType StoneOre = new MyItemType("MyObjectBuilder_Ore", "Stone");
+        static readonly MyItemType IronIngot = new MyItemType("MyObjectBuilder_Ingot", "Iron");
+        static readonly MyItemType CopperIngot = new MyItemType("MyObjectBuilder_Ingot", "Copper");
+        static readonly MyItemType LeadIngot = new MyItemType("MyObjectBuilder_Ingot", "Lead");
+        static readonly MyItemType NickelIngot = new MyItemType("MyObjectBuilder_Ingot", "Nickel");
+        static readonly MyItemType SiliconIngot = new MyItemType("MyObjectBuilder_Ingot", "Silicon");
+        static readonly MyItemType PowerCell = new MyItemType("MyObjectBuilder_Component", "PowerCell");
+        static readonly MyDefinitionId PowerCellBp = new MyDefinitionId(typeof(MyObjectBuilder_BlueprintDefinition), "sdx_itemsBlueprintT0PowerCell");
+        static readonly MyDefinitionId LargeRefineryDef = new MyDefinitionId(typeof(MyObjectBuilder_Refinery), "LargeRefinery");
+        static readonly BindingFlags NF = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
+
+        static void SeedComposition(MyItemType item, Dictionary<MyItemType, MyFixedPoint> comp)
+        {
+            var known = (Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>)typeof(IngameScript.Program)
+                .GetNestedType("AsmLearn", BindingFlags.NonPublic).GetField("known", NF).GetValue(null);
+            known[item] = comp;
+        }
+
+        static void SeedRefineryRecipe(params (MyItemType ore, MyItemType ingot, double ratio)[] recipes)
+        {
+            var learned = (Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>)typeof(IngameScript.Program)
+                .GetNestedType("RefLearn", BindingFlags.NonPublic).GetField("learned", NF).GetValue(null);
+            var byOre = new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>();
+            foreach (var (ore, ingot, ratio) in recipes)
+            {
+                Dictionary<MyItemType, MyFixedPoint> outs;
+                if (!byOre.TryGetValue(ore, out outs)) { outs = new Dictionary<MyItemType, MyFixedPoint>(); byOre[ore] = outs; }
+                outs[ingot] = (MyFixedPoint)ratio;
+            }
+            learned[LargeRefineryDef] = byOre;
+        }
         static string BlueprintPath
         {
             get
@@ -43,6 +85,15 @@ namespace KTZInv3.Tests.Tests
         public void SetUp()
         {
             ItemDefinitions.EnsureRegistered();
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Copper", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Lead", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Nickel", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Silicon", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Copper", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Lead", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Nickel", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Silicon", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Component", "PowerCell", 0.0001f, 0.5f, (MyFixedPoint)1000);
             ScriptRunner.ResetStatics();
         }
 
@@ -124,6 +175,203 @@ namespace KTZInv3.Tests.Tests
 
             // 5. balanced: every Enter had an Exit (stack empty at the end)
             Assert.That(diag.StackDepth, Is.Zero, "enter/exit stack must be balanced");
+        }
+
+        [Test]
+        public void Profile_QueuePriorityAndDiscovery_ThroughSeam()
+        {
+            // Realistic steady-state scenario: 1 refinery, 1 assembler with
+            // a 999 PowerCell queue, cargo stocked with ores + the live
+            // ingot amounts. All recipes known (no discovery starts). Runs
+            // Main() for 130+ ticks so the once-per-second scan seams
+            // (RefScan/AsmScan at tick%60) fire, and prints the per-label
+            // report to find bottlenecks.
+            var grid = CargoFactory.CreateGrid();
+            var cargo = CargoFactory.CreateCargo("1 Cargo [Ore].P99", (MyFixedPoint)400.0, grid,
+                (IronOre, (MyFixedPoint)10000), (CopperOre, (MyFixedPoint)10000),
+                (LeadOre, (MyFixedPoint)10000), (NickelOre, (MyFixedPoint)10000),
+                (SiliconOre, (MyFixedPoint)10000), (StoneOre, (MyFixedPoint)10000),
+                (IronIngot, (MyFixedPoint)1393), (SiliconIngot, (MyFixedPoint)45),
+                (NickelIngot, (MyFixedPoint)26), (LeadIngot, (MyFixedPoint)0.1m),
+                (CopperIngot, (MyFixedPoint)152));
+
+            var (refinery, _) = MakeProfilingRefinery(grid);
+            var (asm, state) = MakeProfilingAssembler(grid);
+            state.Mode = MyAssemblerMode.Assembly;
+            state.Queue.Add(new MyProductionItem(0, PowerCellBp, (MyFixedPoint)999));
+
+            var gts = new FakeGts();
+            gts.Blocks.Add(cargo.Block);
+            gts.Blocks.Add(refinery);
+            gts.Blocks.Add(asm);
+
+            var me = MeFactory.CreateMe(grid);
+            var runner = ScriptRunner.Create(gts, me);
+
+            // seed the full registry: blueprint mapping, composition, recipes
+            var blueprints = (System.Collections.IDictionary)typeof(IngameScript.Program)
+                .GetNestedType("Autocraft", BindingFlags.NonPublic).GetField("blueprints", NF).GetValue(null);
+            blueprints[(MyDefinitionId)PowerCell] = PowerCellBp;
+            SeedComposition(PowerCell, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { SiliconIngot, (MyFixedPoint)0.7m },
+                { NickelIngot, (MyFixedPoint)1 }, { LeadIngot, (MyFixedPoint)0.7m },
+                { CopperIngot, (MyFixedPoint)3 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (SiliconOre, SiliconIngot, 0.7),
+                (NickelOre, NickelIngot, 0.4),
+                (LeadOre, LeadIngot, 0.16),
+                (CopperOre, CopperIngot, 0.24),
+                (StoneOre, IronIngot, 0.03), (StoneOre, NickelIngot, 0.002), (StoneOre, SiliconIngot, 0.004));
+
+            IngameScript.Program.DEBUGGING = true;
+            var diag = new TimingDiag();
+            IngameScript.Program.diag = diag;
+
+            runner.Build();
+            int ticks = 0;
+            while (ticks < 400 && IngameScript.Program.tick < 130)
+            {
+                runner.Program.Main("", UpdateType.Update1);
+                ticks++;
+            }
+
+            var report = diag.Report($"ticks={IngameScript.Program.tick} mainCalls={ticks}");
+            var inv = runner.GetGInv();
+            TestContext.WriteLine("\n" + report);
+            Console.WriteLine("\n===== QueuePriority/discovery profile =====");
+            Console.WriteLine(report);
+            Console.WriteLine($"updateCounter={inv?.updateCounter}");
+            Console.WriteLine("===========================================");
+
+            var s = diag.Stats;
+            // the new seams all fired
+            Assert.That(s.TryGetValue(IngameScript.Program.DbgLabel.RefPriority, out var rp) && rp.Calls > 0,
+                "RefPriority (queue-derived ore walk) must have fired");
+            Assert.That(s.TryGetValue(IngameScript.Program.DbgLabel.RefFactors, out var rf) && rf.Calls > 0,
+                "RefFactors (NonRefManifest copy+subtract) must have fired");
+            Assert.That(IngameScript.Program.tick >= 60, Is.True, "must run past tick 60 for the scan seams");
+            Assert.That(s.TryGetValue(IngameScript.Program.DbgLabel.RefScan, out var rs) && rs.Calls >= 1,
+                "RefScan (refinery discovery scan) must have fired at tick%60");
+            Assert.That(s.TryGetValue(IngameScript.Program.DbgLabel.AsmScan, out var asmScan) && asmScan.Calls >= 1,
+                "AsmScan (assembler discovery scan) must have fired at tick%60");
+
+            // bottleneck checks.
+            // (a) the seam-wrapped calls in the report must be sane. The first
+            //     call of each label includes JIT/static-init cold cost, so the
+            //     bound there is generous (20ms); the steady-state number comes
+            //     from the direct warm benchmark below, which the harness's
+            //     slow pass cadence would otherwise hide (RefPriority recomputes
+            //     once per updateCounter change, and in 130 ticks of fake
+            //     inventory churn that happened only once).
+            Assert.That(rp.TotalMs, Is.LessThan(20.0), $"RefPriority cold call must be <20ms, got {rp.TotalMs:F4}ms");
+            Assert.That(rf.TotalMs, Is.LessThan(20.0), $"RefFactors cold call must be <20ms, got {rf.TotalMs:F4}ms");
+            Assert.That(rs.AvgMs, Is.LessThan(20.0), $"RefScan avg must be <20ms, got {rs.AvgMs:F4}ms");
+            Assert.That(asmScan.AvgMs, Is.LessThan(20.0), $"AsmScan avg must be <20ms, got {asmScan.AvgMs:F4}ms");
+
+            // (b) direct warm benchmark of the queue-derived walk itself: the
+            //     hottest new path (called once per tick in the real script).
+            //     200 iterations after 20 warmup -> must stay sub-ms per call.
+            var walk = typeof(IngameScript.Program).GetNestedType("RefineryMgr", BindingFlags.NonPublic)
+                .GetMethod("computeQueueOrePriority", NF);
+            var sw = new Stopwatch();
+            for (int i = 0; i < 20; i++) walk.Invoke(null, null);
+            int iters = 200;
+            sw.Restart();
+            for (int i = 0; i < iters; i++) walk.Invoke(null, null);
+            sw.Stop();
+            double walkAvgMs = sw.Elapsed.TotalMilliseconds / iters;
+            Console.WriteLine($"direct walk benchmark: {walkAvgMs:F5}ms/call over {iters} warm iterations");
+            TestContext.WriteLine($"direct walk benchmark: {walkAvgMs:F5}ms/call over {iters} warm iterations");
+            Assert.That(walkAvgMs, Is.LessThan(1.0),
+                $"queue-derived walk must be sub-ms/call warm, got {walkAvgMs:F5}ms");
+
+            // Main still encloses everything and the stack is balanced
+            if (s.TryGetValue(IngameScript.Program.DbgLabel.Main, out var main))
+                foreach (var kvp in s)
+                    if (kvp.Key != IngameScript.Program.DbgLabel.Main)
+                        Assert.That(main.TotalMs, Is.GreaterThanOrEqualTo(kvp.Value.TotalMs),
+                            $"Main must enclose {kvp.Key}");
+            Assert.That(diag.StackDepth, Is.Zero, "enter/exit stack must be balanced");
+        }
+
+        /// <summary>Refinery fake with the terminal-block stubs the block loader
+        /// and inventory pipeline require (faction/grid match, HasInventory,
+        /// player access, WcPbAPI null, working).</summary>
+        static (IMyRefinery, FakeInventory) MakeProfilingRefinery(IMyCubeGrid grid)
+        {
+            var input = new FakeInventory((MyFixedPoint)100.0);
+            var output = new FakeInventory((MyFixedPoint)100.0);
+            var refinery = A.Fake<IMyRefinery>();
+            A.CallTo(() => refinery.InputInventory).Returns(input);
+            A.CallTo(() => refinery.OutputInventory).Returns(output);
+            A.CallTo(() => refinery.BlockDefinition).Returns((SerializableDefinitionId)LargeRefineryDef);
+            A.CallTo(() => refinery.Enabled).Returns(true);
+            A.CallTo(() => refinery.CustomName).Returns("Refinery");
+            A.CallTo(() => refinery.IsProducing).Returns(false);
+            A.CallTo(() => refinery.UseConveyorSystem).Returns(false);
+            A.CallTo(() => refinery.InventoryCount).Returns(2);
+            A.CallTo(() => refinery.GetInventory(0)).Returns(input);
+            A.CallTo(() => refinery.GetInventory(1)).Returns(output);
+            A.CallTo(() => refinery.GetInventory(A<int>.That.Matches(i => i != 0 && i != 1))).Returns(null);
+            A.CallTo(() => refinery.CubeGrid).Returns(grid);
+            A.CallTo(() => refinery.GetOwnerFactionTag()).Returns("FACTION");
+            A.CallTo(() => refinery.HasInventory).Returns(true);
+            A.CallTo(() => refinery.HasPlayerAccess(A<long>.Ignored)).Returns(true);
+            A.CallTo(() => refinery.IsWorking).Returns(true);
+            A.CallTo(() => refinery.IsFunctional).Returns(true);
+            A.CallTo(() => refinery.IsSameConstructAs(A<IMyTerminalBlock>.Ignored)).Returns(true);
+            A.CallTo(() => refinery.EntityId).Returns(5001L);
+            A.CallTo(() => refinery.GetProperty("WcPbAPI")).Returns(null);
+            return (refinery, input);
+        }
+
+        /// <summary>Assembler fake with captured mode/queue state (same shape
+        /// as AsmDiscoverTests.MakeAssembler) plus loader/pipeline stubs.</summary>
+        static (IMyAssembler, AsmState2) MakeProfilingAssembler(IMyCubeGrid grid)
+        {
+            var input = new FakeInventory((MyFixedPoint)5.0);
+            var output = new FakeInventory((MyFixedPoint)5.0);
+            var state = new AsmState2();
+            var asm = A.Fake<IMyAssembler>();
+            A.CallTo(() => asm.InputInventory).Returns(input);
+            A.CallTo(() => asm.OutputInventory).Returns(output);
+            A.CallTo(() => asm.BlockDefinition).Returns((SerializableDefinitionId)new MyDefinitionId(typeof(MyObjectBuilder_Assembler), "LargeAssembler"));
+            A.CallTo(() => asm.Enabled).Returns(true);
+            A.CallTo(() => asm.CustomName).Returns("Assembler");
+            A.CallTo(() => asm.IsProducing).Returns(false);
+            A.CallTo(() => asm.IsQueueEmpty).ReturnsLazily(() => state.Queue.Count == 0);
+            A.CallTo(() => asm.CanUseBlueprint(A<MyDefinitionId>.Ignored)).Returns(true);
+            A.CallTo(() => asm.Mode).ReturnsLazily(() => state.Mode);
+            A.CallToSet(() => asm.Mode).Invokes((MyAssemblerMode m) => state.Mode = m);
+            A.CallTo(() => asm.UseConveyorSystem).ReturnsLazily(() => state.UseConv);
+            A.CallToSet(() => asm.UseConveyorSystem).Invokes((bool v) => state.UseConv = v);
+            A.CallTo(() => asm.ClearQueue()).Invokes(() => state.Queue.Clear());
+            A.CallTo(() => asm.AddQueueItem(A<MyDefinitionId>.Ignored, A<MyFixedPoint>.Ignored))
+                .Invokes((MyDefinitionId bp, MyFixedPoint amt) => state.Queue.Add(new MyProductionItem(0, bp, amt)));
+            A.CallTo(() => asm.GetQueue(A<List<MyProductionItem>>.Ignored))
+                .Invokes((List<MyProductionItem> q) => { q.Clear(); q.AddRange(state.Queue); });
+            A.CallTo(() => asm.InventoryCount).Returns(2);
+            A.CallTo(() => asm.GetInventory(0)).Returns(input);
+            A.CallTo(() => asm.GetInventory(1)).Returns(output);
+            A.CallTo(() => asm.GetInventory(A<int>.That.Matches(i => i != 0 && i != 1))).Returns(null);
+            A.CallTo(() => asm.CubeGrid).Returns(grid);
+            A.CallTo(() => asm.GetOwnerFactionTag()).Returns("FACTION");
+            A.CallTo(() => asm.HasInventory).Returns(true);
+            A.CallTo(() => asm.HasPlayerAccess(A<long>.Ignored)).Returns(true);
+            A.CallTo(() => asm.IsWorking).Returns(true);
+            A.CallTo(() => asm.IsFunctional).Returns(true);
+            A.CallTo(() => asm.IsSameConstructAs(A<IMyTerminalBlock>.Ignored)).Returns(true);
+            A.CallTo(() => asm.EntityId).Returns(5002L);
+            A.CallTo(() => asm.GetProperty("WcPbAPI")).Returns(null);
+            return (asm, state);
+        }
+
+        class AsmState2
+        {
+            public MyAssemblerMode Mode = MyAssemblerMode.Assembly;
+            public bool UseConv = false;
+            public List<MyProductionItem> Queue = new List<MyProductionItem>();
         }
 
         static MyFixedPoint TotalAmount(BlueprintFactory.World world, string nameToken)

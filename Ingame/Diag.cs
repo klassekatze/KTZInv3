@@ -22,13 +22,17 @@ namespace IngameScript
 		/// by the test project (Stopwatch etc. legal there), run Main(), read the
 		/// per-label timings out of the override.
 		///
-		/// Current sites (21 labels): Main/Init wrap the tick; ConnectEvents/
+		/// Current sites (25 labels): Main/Init wrap the tick; ConnectEvents/
 		/// AsmMgr/Refinery/Reactor/Conduit wrap main()'s manager updates;
 		/// PassStart/InvBlocks wrap the inventory manager (with per-phase
 		/// InvManifest/InvPriority/InvTransfer sub-seams around each block's
 		/// updateM/updateP/updateT); StatusGen wraps genstatus; BpLearn/
 		/// AsmShuffle/AsmBalance wrap assembler work; LcdRead/LcdWrite/
-		/// AutoAvail/AutoReport/AutoBpCheck wrap the autocraft LCD paths.
+		/// AutoAvail/AutoReport/AutoBpCheck wrap the autocraft LCD paths;
+		/// RefLearn/RefDiscover/AsmDiscover wrap the learning managers;
+		/// RefPriority (queue-derived ore walk, once/tick), RefFactors
+		/// (NonRefManifest copy+subtract, per refinery update),
+		/// RefScan/AsmScan (the once-per-second discovery candidate scans).
 		///
 		/// WHY THIS EXACT SHAPE — DO NOT "SIMPLIFY". Every constraint below was
 		/// measured, not guessed:
@@ -126,6 +130,10 @@ namespace IngameScript
 			RefLearn,
 			RefDiscover,
 			AsmDiscover,
+			RefPriority,
+			RefFactors,
+			RefScan,
+			AsmScan,
 		}
 
 		/// <summary>

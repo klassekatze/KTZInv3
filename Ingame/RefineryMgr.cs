@@ -54,7 +54,9 @@ namespace IngameScript
 			{
 				if (queuePriorityTick == tick) return;
 				queuePriorityTick = tick;
+				{ var _ = DEBUGGING ? diag.Enter(DbgLabel.RefPriority) : false; }
 				var q = computeQueueOrePriority();
+				{ var _ = DEBUGGING ? diag.Exit(DbgLabel.RefPriority) : false; }
 				queuePriorityActive = q.Count > 0;
 				if (q.Count > 0)
 				{
@@ -337,7 +339,9 @@ namespace IngameScript
 						return;
 					}
 
+					{ var _ = DEBUGGING ? diag.Enter(DbgLabel.RefFactors) : false; }
 					computeFactors();
+					{ var _ = DEBUGGING ? diag.Exit(DbgLabel.RefFactors) : false; }
 					if (availOrePriority.Count == 0) return;
 
 					int i = refi;
