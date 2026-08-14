@@ -20,13 +20,18 @@ namespace KTZInv3.Tests.TestUtilities
 
         public void GetBlocks(List<IMyTerminalBlock> blocks)
         {
-            ApiCost.Apply(ApiOp.GtsGetBlocks);
+            // GTS scans: MyGridTerminalSystem.m_blocks is a HashSet; a scan is
+            // O(blocks) with type check + accessibility + delegate per element.
+            // Measured live: 2.9us on 11 blocks (~0.26us/block), NOT flat.
+            if (ApiCost.Enabled && ApiCost.Get(ApiOp.GtsGetBlocks) > 0)
+                for (int i = 0; i < Blocks.Count; i++) ApiCost.Apply(ApiOp.GtsGetBlocks);
             blocks.AddRange(Blocks);
         }
 
         public void GetBlocksOfType<T>(List<IMyTerminalBlock> blocks, Func<IMyTerminalBlock, bool> collect = null) where T : class
         {
-            ApiCost.Apply(ApiOp.GtsGetBlocks);
+            if (ApiCost.Enabled && ApiCost.Get(ApiOp.GtsGetBlocks) > 0)
+                for (int i = 0; i < Blocks.Count; i++) ApiCost.Apply(ApiOp.GtsGetBlocks);
             foreach (var b in Blocks)
                 if (b is T && (collect == null || collect(b)))
                     blocks.Add(b);
@@ -34,7 +39,8 @@ namespace KTZInv3.Tests.TestUtilities
 
         public void GetBlocksOfType<T>(List<T> blocks, Func<T, bool> collect = null) where T : class
         {
-            ApiCost.Apply(ApiOp.GtsGetBlocks);
+            if (ApiCost.Enabled && ApiCost.Get(ApiOp.GtsGetBlocks) > 0)
+                for (int i = 0; i < Blocks.Count; i++) ApiCost.Apply(ApiOp.GtsGetBlocks);
             foreach (var b in Blocks)
                 if (b is T tb && (collect == null || collect(tb)))
                     blocks.Add(tb);

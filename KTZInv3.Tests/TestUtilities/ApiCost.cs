@@ -60,6 +60,13 @@ namespace KTZInv3.Tests.TestUtilities
             if (!Enabled) return;
             double us = Get(op);
             if (us <= 0) return;
+            Spin(us);
+        }
+
+        /// <summary>Busy-wait for the given microseconds (calibrated spin).</summary>
+        public static void Spin(double us)
+        {
+            if (us <= 0) return;
             long targetTicks = (long)(us * Stopwatch.Frequency / 1000000.0);
             long start = Stopwatch.GetTimestamp();
             long elapsed;
