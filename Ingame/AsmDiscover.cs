@@ -17,22 +17,33 @@ namespace IngameScript
 		/// blueprint (item -> blueprint) without knowing what the item is made
 		/// of. Refinery conversions have to be inferred from deltas, but an
 		/// assembler recipe is exact and enactable: put one copy of the item
-		/// into an isolated assembler and queue its disassembly - the output
-		/// IS the recipe, ingredient for ingredient, in exact amounts.
+		/// into an isolated assembler and queue its disassembly - the
+		/// ingredients that come out ARE the recipe, in exact amounts.
+		///
+		/// Inventory layout mirrors the game (decompiled MyAssembler): the
+		/// assembled item being disassembled lives in the OUTPUT inventory
+		/// (UpdateDisassembleMode pulls it there), and the ingredients land in
+		/// the INPUT inventory (FinishDisassembling removes the results from
+		/// output and adds the prerequisites to input). The queue amount is
+		/// POSITIVE - direction is the Mode (DisassembleEnabled), exactly like
+		/// the player UI and AssemblerMgr (which negates its internal orders
+		/// sign convention back to positive before AddQueueItem).
 		///
 		/// Trigger: item has a known autocraft blueprint, we possess at least
 		/// one copy of it (in the global manifest), its composition is
-		/// unknown (AsmLearn), and an enabled assembler is available.
+		/// unknown (AsmLearn), and an enabled assembler that can use the
+		/// blueprint is available.
 		///
 		/// Isolation mirrors RefDiscover: the assembler is excluded from
 		/// normal assembler management (AssemblerMgr skips it), locked
 		/// against the sorter (lock survives renames via updateP), its
 		/// conveyor system is disabled, it is flushed, one copy of the item
-		/// is stuffed into its input, and the disassembly blueprint is queued
-		/// with a negative amount. Once the item has been consumed and the
-		/// output gained ingredients, the composition is exact (output delta
-		/// for exactly one disassembled unit), saved to the registry, and
-		/// written to CustomData.
+		/// is stuffed into its OUTPUT inventory, and the disassembly
+		/// blueprint is queued with a POSITIVE amount while the assembler is
+		/// in Disassembly mode. Once the item has been consumed from the
+		/// output and the input gained ingredients, the composition is exact
+		/// (input delta for exactly one disassembled unit), saved to the
+		/// registry, and written to CustomData.
 		/// </summary>
 		class AsmDiscover
 		{
@@ -44,9 +55,9 @@ namespace IngameScript
 			static MyDefinitionId discItem; // item def (blueprints key)
 			static MyDefinitionId discBlueprint;
 			static int discStartTick = -1;
-			// output snapshot taken right after the flush, so the composition
-			// is the output DELTA (leftovers can't pollute it)
-			static List<MyInventoryItem> outBaseline = null;
+			// input snapshot taken right after the flush, so the composition
+			// is the input DELTA (leftovers can't pollute it)
+			static List<MyInventoryItem> inBaseline = null;
 			// what we cleared from the assembler, so release() can put it
 			// back: the user may have queued a bunch of jobs (e.g. teaching
 			// several blueprints) and expects them to survive the discovery
@@ -69,14 +80,22 @@ namespace IngameScript
 
 				if (discAssembler != null)
 				{
-					// disassembly completes when the item has been fully
-					// consumed and the output gained ingredients
-					var bi = Inventory.BlockInventory.getBI(discAssembler);
-					MyFixedPoint have = 0;
-					if (bi.manifest != null)
-						bi.manifest.stuff.TryGetValue((MyItemType)discItem, out have);
+					// disassembly completes when the item has been consumed
+					// from the OUTPUT inventory and the INPUT inventory
+					// gained ingredients (the game's FinishDisassembling
+					// removes the results from output, adds prerequisites to
+					// input). Note: in Disassembly mode the BlockInventory
+					// manifest view is input-only, so we read the item's
+					// presence directly from the output inventory.
+					bool itemGone = true;
+					List<MyInventoryItem> outNow = new List<MyInventoryItem>();
+					discAssembler.OutputInventory.GetItems(outNow);
+					foreach (var o in outNow)
+					{
+						if (o.Type == (MyItemType)discItem && o.Amount > 0) { itemGone = false; break; }
+					}
 
-					if (have == 0 && outputGained())
+					if (itemGone && inputGained())
 					{
 						release(true);
 					}
@@ -93,18 +112,18 @@ namespace IngameScript
 				startNextDiscovery();
 			}
 
-			// whether the assembler's output contains anything beyond the
-			// post-flush baseline
-			static bool outputGained()
+			// whether the assembler's INPUT contains anything beyond the
+			// post-flush baseline (the ingredients produced by disassembly)
+			static bool inputGained()
 			{
 				List<MyInventoryItem> now = new List<MyInventoryItem>();
-				discAssembler.OutputInventory.GetItems(now);
-				if (outBaseline == null) return now.Count > 0;
+				discAssembler.InputInventory.GetItems(now);
+				if (inBaseline == null) return now.Count > 0;
 				// per-type comparison against the baseline
 				foreach (var n in now)
 				{
 					MyFixedPoint b = 0;
-					foreach (var o in outBaseline)
+					foreach (var o in inBaseline)
 					{
 						if (o.Type == n.Type) { b = o.Amount; break; }
 					}
@@ -140,7 +159,7 @@ namespace IngameScript
 				discItem = item;
 				discBlueprint = bp;
 				discStartTick = tick;
-				outBaseline = null;
+				inBaseline = null;
 
 				var bi = Inventory.BlockInventory.getBI(a);
 
@@ -158,8 +177,8 @@ namespace IngameScript
 				// the assembler must not pull/push items of its own volition
 				// during the observation; the script's own transfers still work
 				a.UseConveyorSystem = false;
-				// disassembly mode: the game's manifest view then tracks the
-				// input (the item being consumed) instead of the output
+				// disassembly mode: the game then removes the queued item
+				// from the output and produces its ingredients into the input
 				a.Mode = MyAssemblerMode.Disassembly;
 
 				// flush input and output so the observation starts clean
@@ -170,27 +189,47 @@ namespace IngameScript
 				a.OutputInventory.GetItems(items);
 				foreach (var it in items) Inventory.expel(bi, it.Type, it.Amount, false);
 
-				// stuff exactly one copy of the item into the input
-				var left = Inventory.force_retrieve(bi, (MyItemType)item, (MyFixedPoint)1, false, true);
-				if (left > 0)
+				// stuff exactly one copy of the item into the OUTPUT
+				// inventory: that is where the game looks for the item being
+				// disassembled (decompiled UpdateDisassembleMode pulls it
+				// there). UseConveyorSystem is off, so we place it ourselves.
+				// Done with the low-level raw transfer, not the BlockInventory
+				// boolean overload: in Disassembly mode the inv system's
+				// inventory view treats the INPUT as the product side
+				// (getSortedInventories(false) -> sortedInventoriesNoOutput =
+				// input), so the booleans would route the transfer into the
+				// wrong inventory. expel (flush) above stays in the inv
+				// system; only the targeted stuffing goes direct.
+				MyFixedPoint left = (MyFixedPoint)1;
+				foreach (var ibi in Inventory.BlockInventory.bPriorityList)
+				{
+					MyFixedPoint available = 0;
+					if (ibi.manifest != null)
+						ibi.manifest.stuff.TryGetValue((MyItemType)item, out available);
+					if (available <= 0) continue;
+					foreach (var srcInv in ibi.getSortedInventories(true))
+					{
+						left = Inventory.transfer_item(srcInv, a.OutputInventory, (MyItemType)item, left);
+						if (left <= (MyFixedPoint)0.001d) break;
+					}
+					if (left <= (MyFixedPoint)0.001d) break;
+				}
+				if (left > (MyFixedPoint)0.001d)
 				{
 					log("AsmDiscover: could not retrieve a copy of " + item.SubtypeId + " for " + a.CustomName, LT.LOG_N);
 					release(false);
 					return;
 				}
 
-				// snapshot what we're about to clear so release() can restore
-				// it: the user may have queued a bunch of jobs (e.g. teaching
-				// several blueprints) and expects them to survive
-				// (already captured above, before the mode was flipped)
-
-				// queue the disassembly (negative amount = disassemble)
+				// queue the disassembly: POSITIVE amount (the game's queue
+				// count is positive; the direction is the Mode, exactly like
+				// the player UI and AssemblerMgr)
 				a.ClearQueue();
-				a.AddQueueItem(bp, (MyFixedPoint)(-1));
+				a.AddQueueItem(bp, (MyFixedPoint)1);
 
-				// snapshot the (now flushed) output as the composition baseline
-				outBaseline = new List<MyInventoryItem>();
-				a.OutputInventory.GetItems(outBaseline);
+				// snapshot the (now flushed) INPUT as the composition baseline
+				inBaseline = new List<MyInventoryItem>();
+				a.InputInventory.GetItems(inBaseline);
 
 				log("AsmDiscover: disassembling 1x " + item.SubtypeId + " in " + a.CustomName, LT.LOG_N);
 			}
@@ -199,11 +238,11 @@ namespace IngameScript
 			{
 				var a = discAssembler;
 				var item = discItem;
-				var baseline = outBaseline; // composition needs it, so capture first
+				var baseline = inBaseline; // composition needs it, so capture first
 				var modeBackup = discModeBackup;
 				var queueBackup = discQueueBackup;
 				discAssembler = null;
-				outBaseline = null;
+				inBaseline = null;
 				discQueueBackup = null;
 
 				if (a == null) return;
@@ -227,11 +266,11 @@ namespace IngameScript
 
 				if (learned)
 				{
-					// composition = output delta (exactly one unit was
+					// composition = input delta (exactly one unit was
 					// disassembled, so the delta IS the per-unit recipe)
 					var comp = new Dictionary<MyItemType, MyFixedPoint>();
 					List<MyInventoryItem> now = new List<MyInventoryItem>();
-					a.OutputInventory.GetItems(now);
+					a.InputInventory.GetItems(now);
 					foreach (var n in now)
 					{
 						MyFixedPoint b = 0;

@@ -79,7 +79,7 @@ namespace KTZInv3.Tests.Tests
             // AsmDiscover static state
             var adType = typeof(IngameScript.Program).GetNestedType("AsmDiscover", System.Reflection.BindingFlags.NonPublic);
             adType.GetField("discAssembler", flags).SetValue(null, null);
-            adType.GetField("outBaseline", flags).SetValue(null, null);
+            adType.GetField("inBaseline", flags).SetValue(null, null);
             adType.GetField("discQueueBackup", flags).SetValue(null, null);
             // RefLearn registry (same test process)
             var refLearnType = typeof(IngameScript.Program).GetNestedType("RefLearn", System.Reflection.BindingFlags.NonPublic);
@@ -224,13 +224,16 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
 
             Assert.That(IsDiscovering(asm), Is.True, "unknown composition with a BP and a copy must start discovery");
-            Assert.That((double)input.AmountOf(SteelPlate), Is.GreaterThan(0.0),
-                "one copy of the item must be stuffed into the assembler input");
+            // the item to disassemble lives in the OUTPUT inventory (the
+            // game's UpdateDisassembleMode pulls it there); ingredients will
+            // land in the INPUT inventory
+            Assert.That((double)output.AmountOf(SteelPlate), Is.GreaterThan(0.0),
+                "one copy of the item must be stuffed into the assembler OUTPUT inventory");
             Assert.That(state.UseConv, Is.False, "assembler's own conveyor auto-move must be disabled during discovery");
             Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Disassembly), "assembler must be in disassembly mode during observation");
             Assert.That(state.Queue.Count, Is.EqualTo(1), "the disassembly job must be queued");
             Assert.That(state.Queue[0].BlueprintId, Is.EqualTo(SteelPlateBp));
-            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(-1.0), "disassembly is a negative-amount queue job");
+            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(1.0), "the queue amount is positive; the Mode drives the direction");
             // locked against the sorter
             var bi = IngameScript.Program.Inventory.BlockInventory.getBI(asm);
             Assert.That(bi.locked, Is.True, "discovering assembler must be locked to the sorter");
@@ -305,11 +308,12 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
             Assert.That(IsDiscovering(asm), Is.True);
 
-            // the disassembly completes: the item is consumed, the output
-            // gained the exact ingredients (steel plate = 7 iron + 1 gold)
-            input.Clear();
-            output.AddItem(IronIngot, (MyFixedPoint)7);
-            output.AddItem(GoldIngot, (MyFixedPoint)1);
+            // the disassembly completes: the item is consumed from the
+            // OUTPUT, the INPUT gained the exact ingredients (steel plate
+            // = 7 iron + 1 gold)
+            output.Clear();
+            input.AddItem(IronIngot, (MyFixedPoint)7);
+            input.AddItem(GoldIngot, (MyFixedPoint)1);
             // let the pipeline refresh the assembler's manifest (updateM)
             RunTicks(120);
 
@@ -349,12 +353,12 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
             Assert.That(IsDiscovering(asm), Is.True, "discovery must start even with a busy queue");
             Assert.That(state.Queue.Count, Is.EqualTo(1), "the discovery run clears the queue and queues only the disassembly");
-            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(-1.0));
+            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(1.0));
 
             // the disassembly completes
-            input.Clear();
-            output.AddItem(IronIngot, (MyFixedPoint)7);
-            output.AddItem(GoldIngot, (MyFixedPoint)1);
+            output.Clear();
+            input.AddItem(IronIngot, (MyFixedPoint)7);
+            input.AddItem(GoldIngot, (MyFixedPoint)1);
             // let the pipeline refresh the assembler's manifest (updateM)
             RunTicks(120);
             Update(discover);

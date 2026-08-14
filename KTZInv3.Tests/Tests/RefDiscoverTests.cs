@@ -89,7 +89,7 @@ namespace KTZInv3.Tests.Tests
             // reset the AsmDiscover static state
             var adType = typeof(IngameScript.Program).GetNestedType("AsmDiscover", System.Reflection.BindingFlags.NonPublic);
             adType.GetField("discAssembler", flags).SetValue(null, null);
-            adType.GetField("outBaseline", flags).SetValue(null, null);
+            adType.GetField("inBaseline", flags).SetValue(null, null);
 
             IngameScript.Program.Inventory.globalManifest.stuff.Clear();
             IngameScript.Program.Inventory.globalManifest.maxVolume = 0;
