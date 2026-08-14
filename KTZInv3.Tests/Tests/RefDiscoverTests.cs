@@ -192,7 +192,15 @@ namespace KTZInv3.Tests.Tests
             // locked against the sorter
             var bi = IngameScript.Program.Inventory.BlockInventory.getBI(refinery);
             Assert.That(bi.locked, Is.True, "discovering refinery must be locked to the sorter");
+            // status display: learning line
+            Assert.That(LearningStatus(), Is.EqualTo("Learning Iron..."),
+                "status display must show the discovery in progress");
         }
+
+        static string LearningStatus()
+            => (string)typeof(IngameScript.Program).GetNestedType("RefDiscover", System.Reflection.BindingFlags.NonPublic)
+                .GetMethod("learningStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Invoke(null, null);
 
         [Test]
         public void NotEnoughStock_DoesNotStartDiscovery()

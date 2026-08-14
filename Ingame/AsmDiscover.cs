@@ -72,6 +72,14 @@ namespace IngameScript
 				return b != null && b == discAssembler;
 			}
 
+			// status display: "Learning <item>..." while a discovery run is
+			// in progress, empty string otherwise
+			static public string learningStatus()
+			{
+				if (discAssembler == null) return "";
+				return "Learning " + discItem.SubtypeId + "...";
+			}
+
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
@@ -262,6 +270,14 @@ namespace IngameScript
 					{
 						a.AddQueueItem(qi.BlueprintId, qi.Amount);
 					}
+				}
+				// the discovery consumed one copy of the item: queue the
+				// assembly of one replacement so the stock isn't silently
+				// depleted. Only in Assembly mode - in Disassembly mode the
+				// user is breaking items down, not building them up.
+				if (learned && modeBackup == MyAssemblerMode.Assembly)
+				{
+					a.AddQueueItem(discBlueprint, (MyFixedPoint)1);
 				}
 
 				if (learned)

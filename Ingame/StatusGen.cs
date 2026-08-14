@@ -63,6 +63,31 @@ namespace IngameScript
 				status.Append("Refineries: ").Append(gRefineryMgr.refWorking).Append(" working, ")
 					.Append(gRefineryMgr.refIdle).Append(" idle\n");
 
+				// per-refinery: what each is refining and why - queue-derived
+				// priority ("for assembler queue") vs the static fallback
+				// ("by fixed priority order"). Refineries mid-discovery show
+				// a "Learning <ore>..." line instead.
+				string refMode = gRefineryMgr.queuePriorityActive ? "for assembler queue" : "by fixed priority order";
+				for (int i = 0; i < Program.refineries.Count && i < gRefineryMgr.refOre.Count; i++)
+				{
+					var ore = gRefineryMgr.refOre[i];
+					if (ore == default(MyItemType)) continue;
+					status.Append("Refining ").Append(ore.SubtypeId).Append(" ").Append(refMode).Append("\n");
+				}
+				// flag the case where the assemblers want things but none of
+				// their queued blueprints are known: the queue-derived
+				// priority is empty and the refineries are on the fixed
+				// order even though the assemblers are waiting
+				if (!gRefineryMgr.queuePriorityActive && RefineryMgr.assemblerQueuesAllUnknown())
+				{
+					status.Append("(Assembler all unknown recipes)\n");
+				}
+				// discovery in progress: one line per discovering block
+				var learnRef = RefDiscover.learningStatus();
+				if (learnRef != "") status.Append(learnRef).Append("\n");
+				var learnAsm = AsmDiscover.learningStatus();
+				if (learnAsm != "") status.Append(learnAsm).Append("\n");
+
 				// reactor fuel, per type, with /quota when a nonzero autocraft
 				// quota exists for that subtype
 				foreach (var kvp in gReactorMgr.fuelByType)

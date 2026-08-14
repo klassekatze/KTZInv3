@@ -35,15 +35,23 @@ namespace KTZInv3.Tests.Tests
         static readonly MyItemType GoldOre = MyItemType.MakeOre("Gold");
         static readonly MyItemType NickelOre = MyItemType.MakeOre("Nickel");
         static readonly MyItemType StoneOre = MyItemType.MakeOre("Stone");
+        static readonly MyItemType SiliconOre = MyItemType.MakeOre("Silicon");
+        static readonly MyItemType LeadOre = MyItemType.MakeOre("Lead");
+        static readonly MyItemType CopperOre = MyItemType.MakeOre("Copper");
         static readonly MyItemType IronIngot = MyItemType.MakeIngot("Iron");
         static readonly MyItemType GoldIngot = MyItemType.MakeIngot("Gold");
         static readonly MyItemType NickelIngot = MyItemType.MakeIngot("Nickel");
+        static readonly MyItemType SiliconIngot = MyItemType.MakeIngot("Silicon");
+        static readonly MyItemType LeadIngot = MyItemType.MakeIngot("Lead");
+        static readonly MyItemType CopperIngot = MyItemType.MakeIngot("Copper");
         static readonly MyItemType SteelPlate = MyItemType.MakeComponent("SteelPlate");
         static readonly MyItemType Motor = MyItemType.MakeComponent("Motor");
+        static readonly MyItemType PowerCell = MyItemType.MakeComponent("PowerCell");
         static readonly MyItemType ConstructionComponent = MyItemType.MakeComponent("ConstructionComponent");
 
         static readonly MyDefinitionId SteelPlateBp = new MyDefinitionId(typeof(MyObjectBuilder_BlueprintDefinition), "SteelPlate");
         static readonly MyDefinitionId MotorBp = new MyDefinitionId(typeof(MyObjectBuilder_BlueprintDefinition), "Motor");
+        static readonly MyDefinitionId PowerCellBp = new MyDefinitionId(typeof(MyObjectBuilder_BlueprintDefinition), "PowerCell");
         static readonly MyDefinitionId LargeRefineryDef = new MyDefinitionId(typeof(MyObjectBuilder_Refinery), "LargeRefinery");
 
         static readonly BindingFlags NF = BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static;
@@ -55,8 +63,16 @@ namespace KTZInv3.Tests.Tests
             // extra ore/ingot types beyond the built-in set
             ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Gold", 0.00037f, 1.0f, (MyFixedPoint)1000000);
             ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Nickel", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Silicon", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Lead", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Copper", 0.00037f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ore", "Stone", 0.00037f, 1.0f, (MyFixedPoint)1000000);
             ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Gold", 0.00027f, 1.0f, (MyFixedPoint)1000000);
             ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Nickel", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Silicon", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Lead", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Copper", 0.00027f, 1.0f, (MyFixedPoint)1000000);
+            ItemDefinitions.RegisterItem("MyObjectBuilder_Ingot", "Iron", 0.00027f, 1.0f, (MyFixedPoint)1000000);
             IngameScript.Program.gProgram = Gateway.CreateProgram().Build();
             ResetStatics();
         }
@@ -123,6 +139,10 @@ namespace KTZInv3.Tests.Tests
         static List<MyItemType> ComputeQueueOrePriority()
             => (List<MyItemType>)typeof(IngameScript.Program).GetNestedType("RefineryMgr", BindingFlags.NonPublic)
                 .GetMethod("computeQueueOrePriority", NF | BindingFlags.Public).Invoke(null, null);
+
+        static bool AssemblerQueuesAllUnknown()
+            => (bool)typeof(IngameScript.Program).GetNestedType("RefineryMgr", BindingFlags.NonPublic)
+                .GetMethod("assemblerQueuesAllUnknown", NF | BindingFlags.Public).Invoke(null, null);
 
         static object MakeMgr()
             => Activator.CreateInstance(typeof(IngameScript.Program).GetNestedType("RefineryMgr", BindingFlags.NonPublic), nonPublic: true);
@@ -348,10 +368,13 @@ namespace KTZInv3.Tests.Tests
             // each = 140 iron + 20 gold total). Stock: 100 iron + 0 gold.
             // With reservation the first assembler's satisfied iron need
             // (70) is subtracted before the second assembler's gap is
-            // computed: iron gap = 140-100 = 40 -> 57 ore demand, gold gap
-            // = 20 -> 40 ore demand -> [IronOre, GoldOre]. Without
+            // computed: iron gap = 140-100 = 40, gold gap = 20. WITHOUT
             // reservation both assemblers would see 100 iron >= 70 and be
-            // "satisfied", leaving only gold demand -> [GoldOre].
+            // "satisfied", leaving only gold demand. The ORDER is by
+            // coverage (stock / per-unit need) ascending - the binding
+            // constraint first: gold has ZERO stock (coverage 0) so it is
+            // the bottleneck and its ore leads; iron stock covers
+            // 100/7 = 14.3 units.
             var (asm1, q1) = MakeAssembler(MyAssemblerMode.Assembly);
             q1.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
             var (asm2, q2) = MakeAssembler(MyAssemblerMode.Assembly);
@@ -367,8 +390,8 @@ namespace KTZInv3.Tests.Tests
 
             var priority = ComputeQueueOrePriority();
 
-            Assert.That(priority, Is.EqualTo(new List<MyItemType> { IronOre, GoldOre }),
-                "first assembler's satisfied iron need must be reserved before the second assembler's gap (iron 40 > gold 20)");
+            Assert.That(priority, Is.EqualTo(new List<MyItemType> { GoldOre, IronOre }),
+                "gold has zero stock (coverage 0) so it is the binding constraint and must lead; reservation still makes iron gap 40");
         }
 
         [Test]
@@ -390,6 +413,102 @@ namespace KTZInv3.Tests.Tests
 
             Assert.That(priority.Count, Is.EqualTo(0),
                 "all queued stacks satisfied -> no demand -> static fallback");
+        }
+
+        // ---- coverage ordering: the binding constraint leads ----
+
+        [Test]
+        public void BindingConstraint_Leads_NotLargestShortfall()
+        {
+            // The real-world PowerCell case: 999 cells (7 iron, 0.7
+            // silicon, 1 nickel, 0.7 lead, 3 copper per unit). Stock covers
+            // ~199 cells of iron, 65 of silicon, 26 of nickel, 50 of
+            // copper, but only 0.14 cells of LEAD (0.0995 kg vs 0.7
+            // needed). Lead is the binding constraint: the assembler cannot
+            // make even ONE more cell without it, so refining copper (50
+            // cells already in stock) unblocks nothing. Lead ore must be
+            // first even though copper's absolute shortfall (2844) is much
+            // larger than lead's (699).
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, PowerCellBp, (MyFixedPoint)999));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(PowerCell, PowerCellBp);
+            SeedComposition(PowerCell, new Dictionary<MyItemType, MyFixedPoint> {
+                { IronIngot, (MyFixedPoint)7 }, { SiliconIngot, (MyFixedPoint)0.7m },
+                { NickelIngot, (MyFixedPoint)1 }, { LeadIngot, (MyFixedPoint)0.7m },
+                { CopperIngot, (MyFixedPoint)3 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (SiliconOre, SiliconIngot, 0.7),
+                (NickelOre, NickelIngot, 0.4),
+                (LeadOre, LeadIngot, 0.16),
+                (CopperOre, CopperIngot, 0.24));
+            SetIngotStock((IronIngot, 1393), (SiliconIngot, 45), (NickelIngot, 26), (LeadIngot, 0.0995), (CopperIngot, 152));
+
+            var priority = ComputeQueueOrePriority();
+
+            Assert.That(priority[0], Is.EqualTo(LeadOre),
+                "lead covers 0.14 cells - the binding constraint - so lead ore leads regardless of copper's larger absolute shortfall");
+            Assert.That(priority.IndexOf(CopperOre), Is.GreaterThan(priority.IndexOf(LeadOre)),
+                "copper (50 cells covered) must rank after lead");
+        }
+
+        [Test]
+        public void InefficientSources_DoNotInflateDemand()
+        {
+            // stone produces iron at a terrible ratio (0.03/stone). The
+            // old code divided the iron shortfall by EVERY ore's ratio, so
+            // stone's 5599/0.03 = 186k "demand" dominated the list. Demand
+            // must be attributed to the most efficient source (iron ore,
+            // 0.7) so stone never outranks it.
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+            SeedComposition(SteelPlate, new Dictionary<MyItemType, MyFixedPoint> { { IronIngot, (MyFixedPoint)7 } });
+            SeedRefineryRecipe(
+                (IronOre, IronIngot, 0.7),
+                (StoneOre, IronIngot, 0.03));
+
+            var priority = ComputeQueueOrePriority();
+
+            Assert.That(priority, Is.EqualTo(new List<MyItemType> { IronOre }),
+                "iron shortfall must be attributed to the efficient source (iron ore), not inflated via stone's 0.03 ratio");
+        }
+
+        // ---- status display helpers ----
+
+        [Test]
+        public void AssemblerQueuesAllUnknown_True_WhenNoBlueprintKnown()
+        {
+            // queue exists (SteelPlate) but the blueprint mapping is empty
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            // no SeedBlueprint call -> unknown
+
+            Assert.That(AssemblerQueuesAllUnknown(), Is.True,
+                "queues exist but no blueprint is known -> flag the status annotation");
+        }
+
+        [Test]
+        public void AssemblerQueuesAllUnknown_False_WhenKnown()
+        {
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly);
+            queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)10));
+            SetAssemblers(new List<IMyAssembler> { asm });
+            SeedBlueprint(SteelPlate, SteelPlateBp);
+
+            Assert.That(AssemblerQueuesAllUnknown(), Is.False, "a known queued blueprint -> no annotation");
+        }
+
+        [Test]
+        public void AssemblerQueuesAllUnknown_False_WhenNoQueues()
+        {
+            var (asm, queue) = MakeAssembler(MyAssemblerMode.Assembly); // empty queue
+            SetAssemblers(new List<IMyAssembler> { asm });
+
+            Assert.That(AssemblerQueuesAllUnknown(), Is.False, "no queues at all -> no annotation");
         }
 
         // ---- integration through computeFactors ----

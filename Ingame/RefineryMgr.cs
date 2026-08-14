@@ -20,6 +20,13 @@ namespace IngameScript
 			// ordering actually in effect: the queue-derived demand list when
 			// assemblers have orders queued, else the static orePriority
 			List<MyItemType> activePriority = new List<MyItemType>();
+			// true when activePriority is the assembler-queue-derived blend
+			// (status display: "for assembler queue" vs "by fixed priority
+			// order")
+			public bool queuePriorityActive = false;
+			// what each refinery currently has in its input (per index, kept
+			// in sync with Program.refineries; status display reads it)
+			public List<MyItemType> refOre = new List<MyItemType>();
 			int queuePriorityTick = -1;
 			public RefineryMgr()
 			{
@@ -48,6 +55,7 @@ namespace IngameScript
 				if (queuePriorityTick == tick) return;
 				queuePriorityTick = tick;
 				var q = computeQueueOrePriority();
+				queuePriorityActive = q.Count > 0;
 				if (q.Count > 0)
 				{
 					var blend = new List<MyItemType>(q);
@@ -56,6 +64,33 @@ namespace IngameScript
 					activePriority = blend;
 				}
 				else activePriority = orePriority;
+			}
+
+			// true when there ARE assembler queues (Assembly mode) but NONE
+			// of their blueprints are known to the registry. In that case
+			// the queue-derived priority is empty and the refineries are on
+			// the fixed priority order even though the assemblers want
+			// things - the status display shows "(Assembler all unknown
+			// recipes)" to flag why.
+			static public bool assemblerQueuesAllUnknown()
+			{
+				bool anyQueue = false;
+				for (int i = 0; i < Program.assemblers.Count; i++)
+				{
+					var asm = Program.assemblers[i];
+					if (asm.Mode != MyAssemblerMode.Assembly) continue;
+					if (AsmDiscover.isDiscovering(asm)) continue;
+					List<MyProductionItem> queue = new List<MyProductionItem>();
+					asm.GetQueue(queue);
+					if (queue.Count == 0) continue;
+					anyQueue = true;
+					for (int q = 0; q < queue.Count; q++)
+					{
+						MyItemType item;
+						if (itemForBlueprint(queue[q].BlueprintId, out item)) return false;
+					}
+				}
+				return anyQueue;
 			}
 
 			// blueprint -> item (reverse of Autocraft.blueprints); false when
@@ -95,6 +130,14 @@ namespace IngameScript
 				// considered. The first item with a real gap contributes its
 				// per-ingot shortfall (not the full need) and the walk stops.
 				Dictionary<MyItemType, double> ingotDemand = new Dictionary<MyItemType, double>();
+				// how many units of the queued item the current stock can
+				// support per ingredient (stock / per-unit need). The
+				// ingredient with the LOWEST coverage is the binding
+				// constraint for the next production cycle: no matter how
+				// much of the others we have, the assembler cannot make
+				// more units than the least-covered ingredient allows. The
+				// refineries must therefore work on its ore first.
+				Dictionary<MyItemType, double> ingotCoverage = new Dictionary<MyItemType, double>();
 				for (int i = 0; i < Program.assemblers.Count; i++)
 				{
 					var asm = Program.assemblers[i];
@@ -122,6 +165,14 @@ namespace IngameScript
 							{
 								satisfied = false;
 								shortfall[ing.Key] = gap;
+								// coverage = how many units of the queued
+								// item this stock supports (stock /
+								// per-unit need); the MINIMUM across
+								// contributing stacks wins
+								double c = 0;
+								ingotCoverage.TryGetValue(ing.Key, out c);
+								double cov = stock / (double)ing.Value;
+								if (c == 0 || cov < c) ingotCoverage[ing.Key] = cov;
 							}
 						}
 						// reserve this stack's full need regardless: satisfied
@@ -168,22 +219,42 @@ namespace IngameScript
 					}
 				}
 
-				// 3. ore demand: how much of each ore satisfies the ingot demand
+				// 3. attribute each ingot's shortfall to its single most
+				// efficient source. Dividing the shortfall by EVERY ore's
+				// ratio would inflate bad sources (e.g. stone at 0.03
+				// iron/stone -> 186k "demand" to satisfy iron) and make the
+				// refinery waste its time on them; the demand list must
+				// point at the ore that actually satisfies the ingot.
 				Dictionary<MyItemType, double> oreDemand = new Dictionary<MyItemType, double>();
+				Dictionary<MyItemType, double> oreCoverage = new Dictionary<MyItemType, double>();
 				foreach (var ing in ingotDemand)
 				{
+					MyItemType bestOre = default(MyItemType);
+					double bestRatio = 0;
 					foreach (var oreKvp in oreIngot)
 					{
 						double ratio;
 						if (!oreKvp.Value.TryGetValue(ing.Key, out ratio) || ratio <= 0) continue;
-						double d;
-						oreDemand.TryGetValue(oreKvp.Key, out d);
-						oreDemand[oreKvp.Key] = d + ing.Value / ratio;
+						if (ratio > bestRatio) { bestRatio = ratio; bestOre = oreKvp.Key; }
 					}
+					if (bestRatio <= 0) continue;
+					double d;
+					oreDemand.TryGetValue(bestOre, out d);
+					oreDemand[bestOre] = d + ing.Value / bestRatio;
+					// an ore serving several ingots ranks by its most
+					// binding (lowest-coverage) output
+					double cov;
+					if (!oreCoverage.TryGetValue(bestOre, out cov) || ingotCoverage[ing.Key] < cov)
+						oreCoverage[bestOre] = ingotCoverage[ing.Key];
 				}
 
-				// 4. highest demand first
-				return oreDemand.OrderByDescending(kvp => kvp.Value).Select(kvp => kvp.Key).ToList();
+				// 4. most binding first: the ingredient whose stock covers
+				// the fewest future units is the bottleneck for the next
+				// production cycle, so its ore leads. Ties by demand.
+				return oreDemand.Keys
+					.OrderBy(ore => oreCoverage[ore])
+					.ThenByDescending(ore => oreDemand[ore])
+					.ToList();
 			}
 
 
@@ -234,10 +305,17 @@ namespace IngameScript
 				if (tick % 60 == 0)
 				{
 					refWorking = refIdle = 0;
+					refOre.Clear();
 					for (int i = 0; i < Program.refineries.Count; i++)
 					{
-						if (Program.refineries[i].IsProducing) refWorking++;
+						var r = Program.refineries[i];
+						if (r.IsProducing) refWorking++;
 						else refIdle++;
+						var item0 = r.InputInventory.GetItemAt(0);
+						if (item0.HasValue && Inventory.getItemInfo(item0.Value.Type).IsOre)
+							refOre.Add(item0.Value.Type);
+						else
+							refOre.Add(default(MyItemType));
 					}
 				}
 				if (!gInv.hasUpdatedOnce) return;

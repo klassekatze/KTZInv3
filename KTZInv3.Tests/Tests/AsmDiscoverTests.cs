@@ -238,7 +238,15 @@ namespace KTZInv3.Tests.Tests
             // locked against the sorter
             var bi = IngameScript.Program.Inventory.BlockInventory.getBI(asm);
             Assert.That(bi.locked, Is.True, "discovering assembler must be locked to the sorter");
+            // status display: learning line
+            Assert.That(LearningStatus(), Is.EqualTo("Learning SteelPlate..."),
+                "status display must show the discovery in progress");
         }
+
+        static string LearningStatus()
+            => (string)typeof(IngameScript.Program).GetNestedType("AsmDiscover", System.Reflection.BindingFlags.NonPublic)
+                .GetMethod("learningStatus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                .Invoke(null, null);
 
         [Test]
         public void NoItemCopy_DoesNotStartDiscovery()
@@ -365,12 +373,17 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
 
             Assert.That(IsDiscovering(asm), Is.False);
-            // the user's jobs are back, in order, with their amounts
-            Assert.That(state.Queue.Count, Is.EqualTo(2), "cleared queue jobs must be restored");
+            // the user's jobs are back, in order, with their amounts, plus
+            // the automatic re-queue of 1 replacement (the discovery
+            // consumed one copy of the item to learn its composition)
+            Assert.That(state.Queue.Count, Is.EqualTo(3), "cleared queue jobs must be restored + 1 replacement re-queued");
             Assert.That(state.Queue[0].BlueprintId, Is.EqualTo(SteelPlateBp));
             Assert.That((double)state.Queue[0].Amount, Is.EqualTo(10.0));
             Assert.That(state.Queue[1].BlueprintId, Is.EqualTo(InteriorPlateBp));
             Assert.That((double)state.Queue[1].Amount, Is.EqualTo(5.0));
+            Assert.That(state.Queue[2].BlueprintId, Is.EqualTo(SteelPlateBp),
+                "assembly of 1 replacement must be queued after a successful discovery");
+            Assert.That((double)state.Queue[2].Amount, Is.EqualTo(1.0));
             Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "assembler mode must be restored");
         }
 

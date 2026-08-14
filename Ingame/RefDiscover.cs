@@ -59,6 +59,14 @@ namespace IngameScript
 				return b != null && b == discRefinery;
 			}
 
+			// status display: "Learning <ore>..." while a discovery run is
+			// in progress, empty string otherwise
+			static public string learningStatus()
+			{
+				if (discRefinery == null) return "";
+				return "Learning " + discOre.SubtypeId + "...";
+			}
+
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
