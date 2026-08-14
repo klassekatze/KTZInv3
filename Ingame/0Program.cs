@@ -25,10 +25,19 @@ namespace IngameScript
 		static bool MANAGE_REACTORS = true;//rebalance fuel across reactors (ReactorMgr) AND lock reactors in the sorter so
 											//it never moves fuel in/out of them. When false the reactor manager is disabled
 											//and reactors are sorted like any other container.
-		static bool REFINERY_LEARN = true;//observe refineries (RefLearn) to learn ore->ingot conversions, AND lock
-											//refineries in the sorter so sorter moves never pollute the observed
-											//inventory deltas. When false the learner is disabled and refineries
-											//are sorted like any other container.
+		static bool REFINERY_LEARN = true;//enable isolated refinery recipe discovery (RefDiscover): when an
+											//enabled refinery accepts an ore we don't know the recipe for, the
+											//refinery is isolated (conveyors off, locked from the sorter, flushed),
+											//stuffed with the unknown ore, and observed until the conversion is
+											//learned. There is no continuous passive refinery learning - isolated
+											//discovery windows are the only ones trusted. When false the discovery
+											//controller is disabled.
+		static bool ASM_DISCOVER = true;//enable isolated assembler recipe discovery (AsmDiscover): when we know
+										//an autocraft blueprint for an item and possess at least one copy of the
+										//item itself, an assembler is isolated (conveyors off, locked from the
+										//sorter, flushed) and the item is disassembled to learn the exact
+										//composition of the recipe, which is saved to the CD registry. When
+										//false the discovery controller is disabled.
 
 		//static bool ASM_FLUSH = false;//whether to periodically clear inputs of an assembler that is not producing
 		static bool ASM_SHUFFLE = false;//whether to periodically move the first item to back of queue if not producing
@@ -239,6 +248,7 @@ namespace IngameScript
 		static AssemblerMgr gAssemblerMgr = null;
 		static RefineryMgr gRefineryMgr = null;
 		static RefDiscover gRefDiscover = null;
+		static AsmDiscover gAsmDiscover = null;
 		static ReactorMgr gReactorMgr = null;
 
 		public string mainArg = "";
@@ -402,6 +412,7 @@ namespace IngameScript
 				gAssemblerMgr = new AssemblerMgr();
 				gRefineryMgr = new RefineryMgr();
 				gRefDiscover = new RefDiscover();
+				gAsmDiscover = new AsmDiscover();
 				gAutocraft = new Autocraft();
 				gReactorMgr = new ReactorMgr();
 				log("Basic structures initialized.");
@@ -425,6 +436,9 @@ namespace IngameScript
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.RefDiscover) : false; }
 			gRefDiscover.update();
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.RefDiscover) : false; }
+			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.AsmDiscover) : false; }
+			gAsmDiscover.update();
+			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.AsmDiscover) : false; }
 			{ var _ = DEBUGGING ? diag.Enter(DbgLabel.Reactor) : false; }
 			gReactorMgr.update();
 			{ var _ = DEBUGGING ? diag.Exit(DbgLabel.Reactor) : false; }

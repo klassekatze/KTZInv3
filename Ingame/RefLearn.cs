@@ -20,6 +20,13 @@ namespace IngameScript
 		/// works purely from inventory deltas, so it also covers modded
 		/// refinery-like machines that don't expose a meaningful queue.
 		///
+		/// The learner is only used DURING isolated discovery (RefDiscover):
+		/// continuous passive observation of normally-running refineries was
+		/// removed because it is unnecessary (discovery is enactable) and the
+		/// mixed windows are inherently less accurate. RefDiscover creates one
+		/// fresh learner per discovery run, so the observation windows are
+		/// always clean single-input ones.
+		///
 		/// Knowledge is keyed by the refinery's BLOCK DEFINITION, so a recipe
 		/// learned on a regular refinery does NOT apply to a blast forge or
 		/// other advanced refinery type (e.g. SDX2 gives boron only from the
@@ -51,15 +58,6 @@ namespace IngameScript
 			List<MyInventoryItem> lastInput = null;
 			List<MyInventoryItem> lastOutput = null;
 
-			// every live learner, so RefDiscover can reset the baseline of the
-			// learner bound to a refinery it is about to flush
-			static List<RefLearn> allLearners = new List<RefLearn>();
-
-			public RefLearn()
-			{
-				allLearners.Add(this);
-			}
-
 			// whether we know the recipe for the given refinery block definition and ore
 			static public bool knowsRecipe(MyDefinitionId refDef, MyItemType ore)
 			{
@@ -78,20 +76,13 @@ namespace IngameScript
 				return outs;
 			}
 
-			// forget the observation history of every learner bound to the
-			// given machine so the next update takes a fresh baseline (used
-			// when RefDiscover flushes and stuffs the refinery: the flush
-			// deltas must not be attributed as consumption)
-			static public void resetForMachine(IMyProductionBlock m)
+			// forget the observation history so the next update takes a fresh
+			// baseline (used when a discovery starts: the flush deltas must
+			// not be attributed as consumption)
+			public void reset()
 			{
-				foreach (var l in allLearners)
-				{
-					if (l.machine == m)
-					{
-						l.lastInput = null;
-						l.lastOutput = null;
-					}
-				}
+				lastInput = null;
+				lastOutput = null;
 			}
 
 			// serializes the registry section (lines after the KTZREF; header)

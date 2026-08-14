@@ -62,6 +62,9 @@ namespace IngameScript
 				// assembler bps)
 				newcd += "\nKTZREF;";
 				newcd += RefLearn.writeRegistry();
+				// assembler recipe compositions (read back by the ctor too)
+				newcd += "\nKTZREC;";
+				newcd += AsmLearn.writeRegistry();
 				gProgram.Me.CustomData = newcd;
 			}
 
@@ -70,17 +73,27 @@ namespace IngameScript
 			{
 				var cd = gProgram.Me.CustomData;
 				var spl = cd.Split('\n');
-				bool inRefSection = false;
+				string section = "KTZINV";
 				foreach(var l in spl)
 				{
 					if (l.StartsWith("KTZREF;"))
 					{
-						inRefSection = true;
+						section = "KTZREF";
 						continue;
 					}
-					if (inRefSection)
+					if (l.StartsWith("KTZREC;"))
+					{
+						section = "KTZREC";
+						continue;
+					}
+					if (section == "KTZREF")
 					{
 						RefLearn.loadRegistryLine(l);
+						continue;
+					}
+					if (section == "KTZREC")
+					{
+						AsmLearn.loadRegistryLine(l);
 						continue;
 					}
 					var s2 = l.Split(';');

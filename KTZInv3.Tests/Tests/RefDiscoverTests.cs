@@ -77,12 +77,19 @@ namespace KTZInv3.Tests.Tests
             refLearnType.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
             refLearnType.GetField("consumedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, MyFixedPoint>>());
             refLearnType.GetField("producedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
-            var learnerListType = typeof(System.Collections.Generic.List<>).MakeGenericType(refLearnType);
-            refLearnType.GetField("allLearners", flags).SetValue(null, Activator.CreateInstance(learnerListType));
+            // AsmLearn's registry (shared test process)
+            var asmLearnType = typeof(IngameScript.Program).GetNestedType("AsmLearn", System.Reflection.BindingFlags.NonPublic);
+            asmLearnType.GetField("known", flags).SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
 
             // reset the RefDiscover static state (private statics)
             var rdType = typeof(IngameScript.Program).GetNestedType("RefDiscover", System.Reflection.BindingFlags.NonPublic);
             rdType.GetField("discRefinery", flags).SetValue(null, null);
+            rdType.GetField("discLearner", flags).SetValue(null, null);
+
+            // reset the AsmDiscover static state
+            var adType = typeof(IngameScript.Program).GetNestedType("AsmDiscover", System.Reflection.BindingFlags.NonPublic);
+            adType.GetField("discAssembler", flags).SetValue(null, null);
+            adType.GetField("outBaseline", flags).SetValue(null, null);
 
             IngameScript.Program.Inventory.globalManifest.stuff.Clear();
             IngameScript.Program.Inventory.globalManifest.maxVolume = 0;

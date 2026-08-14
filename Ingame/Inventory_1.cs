@@ -407,13 +407,15 @@ namespace IngameScript
 						// fuel balancing: the sorter must never move fuel in or
 						// out of them, or it fights the ReactorMgr average.
 						if (MANAGE_REACTORS && b is IMyReactor) _locked();
-						// refineries are locked while the refinery learner is
-						// active: sorter moves in/out would pollute the observed
-						// inventory deltas and corrupt the learned conversions.
-						if (REFINERY_LEARN && b is IMyRefinery) _locked();
 						// a refinery being used for recipe discovery (RefDiscover)
-						// stays locked even if it is renamed mid-discovery
+						// stays locked even if it is renamed mid-discovery. Normal
+						// refineries are NOT locked: continuous passive learning
+						// was removed, so there are no deltas to protect.
 						if (RefDiscover.isDiscovering(b)) _locked();
+						// same for an assembler being used for recipe discovery
+						// (AsmDiscover): its queue and inventories are ours until
+						// the disassembly observation completes.
+						if (AsmDiscover.isDiscovering(b)) _locked();
 						//if (hiddenBlockTypes.Contains(b.DefinitionDisplayNameText)) _hidden();
 
 						if (!hidden)

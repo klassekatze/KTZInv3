@@ -49,6 +49,13 @@ namespace IngameScript
 				{
 					var state = asmstates[shuffleidx];
 					var asm = assemblers[shuffleidx];
+					// discovery owns this assembler's queue and inventories;
+					// shuffle must not flush/reorder them
+					if (AsmDiscover.isDiscovering(asm))
+					{
+						state.flushTick = state.lastProduced = tick;
+						return;
+					}
 
 					if (asm.IsQueueEmpty || asm.IsProducing || !asm.Enabled)
 					{
@@ -150,6 +157,8 @@ namespace IngameScript
 			{
 				foreach (var a in assemblers)
 				{
+					// discovery owns this assembler's queue
+					if (AsmDiscover.isDiscovering(a)) continue;
 					if (a.Mode != m)
 					{
 						List<MyProductionItem> queue = new List<MyProductionItem>();
@@ -177,6 +186,8 @@ namespace IngameScript
 				Dictionary<IMyAssembler, List<MyProductionItem>> queues = new Dictionary<IMyAssembler, List<MyProductionItem>>();
 				foreach (var a in assemblers)
 				{
+					// discovery owns this assembler's queue and mode
+					if (AsmDiscover.isDiscovering(a)) continue;
 					if (a.Mode != m)
 					{
 						a.ClearQueue();
@@ -295,7 +306,14 @@ namespace IngameScript
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
-				foreach (var l in asmstates) l.bpl.update();
+				foreach (var l in asmstates)
+				{
+					// an assembler being used for recipe discovery is excluded
+					// from normal management: BPLearn2 would read the
+					// disassembly queue and learn garbage from it
+					if (AsmDiscover.isDiscovering(l.bpl.asm)) continue;
+					l.bpl.update();
+				}
 
 				if (tick % 60 == 0)
 				{
@@ -458,6 +476,8 @@ namespace IngameScript
 					{
 						for (int i = 0; i < assemblers.Count; i++)
 						{
+							// discovery owns the discovering assembler's mode
+							if (AsmDiscover.isDiscovering(assemblers[i])) continue;
 							if (assemblers[i].Mode != MyAssemblerMode.Assembly) assemblers[i].Mode = MyAssemblerMode.Assembly;
 						}
 					}

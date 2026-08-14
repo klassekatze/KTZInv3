@@ -43,6 +43,9 @@ namespace IngameScript
 			static IMyRefinery discRefinery = null;
 			static MyItemType discOre;
 			static int discStartTick = -1;
+			// the learner observing the discovery run; a fresh learner per run
+			// so its first observation is a clean post-flush baseline
+			static RefLearn discLearner = null;
 
 			// whether the given block is the refinery currently being used
 			// for discovery (checked by the sorter's updateP so the lock
@@ -60,6 +63,9 @@ namespace IngameScript
 
 				if (discRefinery != null)
 				{
+					// drive the observation: the learner reads the inventory
+					// deltas of the isolated refinery once per second
+					if (discLearner != null) discLearner.update();
 					var refDef = (MyDefinitionId)discRefinery.BlockDefinition;
 					if (RefLearn.knowsRecipe(refDef, discOre))
 					{
@@ -161,9 +167,11 @@ namespace IngameScript
 				var left = Inventory.force_retrieve(bi, ore, amt, false, true);
 				log("RefDiscover: discovering " + ore.SubtypeId + " in " + r.CustomName + " (stuffed " + (amt - left) + ")", LT.LOG_N);
 
-				// the learner's baseline must not include the flush: reset its
-				// snapshots so the next update takes a fresh baseline
-				RefLearn.resetForMachine(r);
+				// the learner's baseline must not include the flush: use a
+				// fresh learner so its first observation is a clean
+				// post-flush baseline
+				discLearner = new RefLearn();
+				discLearner.machine = r;
 			}
 
 			void release(bool learned)
@@ -171,6 +179,7 @@ namespace IngameScript
 				var r = discRefinery;
 				var ore = discOre;
 				discRefinery = null;
+				discLearner = null;
 
 				if (r == null) return;
 

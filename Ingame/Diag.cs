@@ -125,6 +125,7 @@ namespace IngameScript
 			Conduit,
 			RefLearn,
 			RefDiscover,
+			AsmDiscover,
 		}
 
 		/// <summary>

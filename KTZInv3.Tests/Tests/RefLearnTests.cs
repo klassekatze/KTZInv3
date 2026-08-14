@@ -66,9 +66,9 @@ namespace KTZInv3.Tests.Tests
             t.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
             t.GetField("consumedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, MyFixedPoint>>());
             t.GetField("producedTotal", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
-            // allLearners is List<RefLearn> (private nested type) — build via reflection
-            var learnerListType = typeof(System.Collections.Generic.List<>).MakeGenericType(RefLearnType());
-            t.GetField("allLearners", flags).SetValue(null, Activator.CreateInstance(learnerListType));
+            // AsmLearn's registry must be reset here too (same test process)
+            var asmLearnType = typeof(IngameScript.Program).GetNestedType("AsmLearn", System.Reflection.BindingFlags.NonPublic);
+            asmLearnType.GetField("known", flags).SetValue(null, new Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>());
         }
 
         static Type RefLearnType()
