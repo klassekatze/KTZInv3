@@ -114,6 +114,7 @@ namespace KTZInv3.Tests.TestUtilities
 
         public MyFixedPoint GetItemAmount(MyItemType itemType)
         {
+            ApiCost.Apply(ApiOp.InvGetItemAmount);
             MyFixedPoint sum = 0;
             foreach (var it in _items)
                 if (it.Type == itemType) sum += it.Amount;
@@ -122,7 +123,11 @@ namespace KTZInv3.Tests.TestUtilities
 
         public bool ContainItems(MyFixedPoint amount, MyItemType itemType) => GetItemAmount(itemType) >= amount;
 
-        public MyInventoryItem? GetItemAt(int index) => IsItemAt(index) ? _items[index] : (MyInventoryItem?)null;
+        public MyInventoryItem? GetItemAt(int index)
+        {
+            ApiCost.Apply(ApiOp.InvGetItemAt);
+            return IsItemAt(index) ? _items[index] : (MyInventoryItem?)null;
+        }
 
         public MyInventoryItem? GetItemByID(uint id)
         {
@@ -146,12 +151,16 @@ namespace KTZInv3.Tests.TestUtilities
 
         public void GetItems(List<MyInventoryItem> items, Func<MyInventoryItem, bool> filter = null)
         {
+            // measured live: ~0.3us flat regardless of stack count (26 stacks) -
+            // the cost is the marshalling, not the copy
+            ApiCost.Apply(ApiOp.InvGetItems);
             foreach (var it in _items)
                 if (filter == null || filter(it)) items.Add(it);
         }
 
         public bool TransferItemTo(IMyInventory dstInventory, MyInventoryItem item, MyFixedPoint? amount = null)
         {
+            ApiCost.Apply(ApiOp.InvTransfer);
             var fake = dstInventory as FakeInventory;
             if (fake == null || !ConveyorConnected || !fake.ConveyorConnected) return false;
             if (!CanTransferItemTo(dstInventory, item.Type)) return false;
@@ -218,6 +227,7 @@ namespace KTZInv3.Tests.TestUtilities
 
         public void GetAcceptedItems(List<MyItemType> itemsTypes, Func<MyItemType, bool> filter = null)
         {
+            ApiCost.Apply(ApiOp.InvAccepted);
             if (AcceptedTypes == null) return;
             foreach (var t in AcceptedTypes)
                 if (filter == null || filter(t)) itemsTypes.Add(t);

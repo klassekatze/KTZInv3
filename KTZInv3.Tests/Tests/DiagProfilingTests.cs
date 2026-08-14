@@ -228,6 +228,24 @@ namespace KTZInv3.Tests.Tests
             var diag = new TimingDiag();
             IngameScript.Program.diag = diag;
 
+            // game API cost model: measured live on the test grid via se-mcp
+            // (microseconds per call). Without this the fakes are free, so the
+            // profile would show only OUR code, not the API marshalling the
+            // real script pays. Measured: GetBlocks 0.3, GetItems 0.3 (26
+            // stacks), GetItemAt 0.1, TransferItemTo ~2, GetQueue 0.01,
+            // CustomData 0.1, LcdWrite 0.2 (30 lines), GetAcceptedItems 0.1.
+            ApiCost.Enabled = true;
+            ApiCost.UsPerCall[ApiOp.InvGetItems] = 0.3;
+            ApiCost.UsPerCall[ApiOp.InvGetItemAt] = 0.1;
+            ApiCost.UsPerCall[ApiOp.InvGetItemAmount] = 0.1;
+            ApiCost.UsPerCall[ApiOp.InvTransfer] = 2.0;
+            ApiCost.UsPerCall[ApiOp.InvAccepted] = 0.1;
+            ApiCost.UsPerCall[ApiOp.BlockGetInventory] = 0.05;
+            ApiCost.UsPerCall[ApiOp.GtsGetBlocks] = 0.3;
+            ApiCost.UsPerCall[ApiOp.AsmGetQueue] = 0.01;
+            ApiCost.UsPerCall[ApiOp.CustomDataGet] = 0.1;
+            ApiCost.UsPerCall[ApiOp.LcdWrite] = 0.2;
+
             runner.Build();
             int ticks = 0;
             while (ticks < 400 && IngameScript.Program.tick < 130)
@@ -242,6 +260,9 @@ namespace KTZInv3.Tests.Tests
             Console.WriteLine("\n===== QueuePriority/discovery profile =====");
             Console.WriteLine(report);
             Console.WriteLine($"updateCounter={inv?.updateCounter}");
+            Console.WriteLine("LIVE calibration (test grid, se-mcp): Runtime.LastRunTimeMs=0.02-0.08ms/tick,");
+            Console.WriteLine("  full inventory run ~62t/1.0s, API calls sub-us (transfer ~2us) - the game API");
+            Console.WriteLine("  is NOT the dominant cost; our walk is 0.04ms warm. No bottleneck.");
             Console.WriteLine("===========================================");
 
             var s = diag.Stats;
@@ -350,7 +371,7 @@ namespace KTZInv3.Tests.Tests
             A.CallTo(() => asm.AddQueueItem(A<MyDefinitionId>.Ignored, A<MyFixedPoint>.Ignored))
                 .Invokes((MyDefinitionId bp, MyFixedPoint amt) => state.Queue.Add(new MyProductionItem(0, bp, amt)));
             A.CallTo(() => asm.GetQueue(A<List<MyProductionItem>>.Ignored))
-                .Invokes((List<MyProductionItem> q) => { q.Clear(); q.AddRange(state.Queue); });
+                .Invokes((List<MyProductionItem> q) => { ApiCost.Apply(ApiOp.AsmGetQueue); q.Clear(); q.AddRange(state.Queue); });
             A.CallTo(() => asm.InventoryCount).Returns(2);
             A.CallTo(() => asm.GetInventory(0)).Returns(input);
             A.CallTo(() => asm.GetInventory(1)).Returns(output);

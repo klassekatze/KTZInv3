@@ -74,12 +74,12 @@ namespace KTZInv3.Tests.TestUtilities
             var customDataValue = customData ?? "";
             var block = A.Fake<IMyTerminalBlock>();
             A.CallTo(() => block.CustomName).Returns(name);
-            A.CallTo(() => block.CustomData).ReturnsLazily(() => customDataValue);
+            A.CallTo(() => block.CustomData).ReturnsLazily(() => { ApiCost.Apply(ApiOp.CustomDataGet); return customDataValue; });
             A.CallToSet(() => block.CustomData).Invokes((string v) => customDataValue = v);
             A.CallTo(() => block.CubeGrid).Returns(grid);
             A.CallTo(() => block.DefinitionDisplayNameText).Returns("Large Container");
             A.CallTo(() => block.InventoryCount).Returns(1);
-            A.CallTo(() => block.GetInventory(0)).Returns(inventory);
+            A.CallTo(() => block.GetInventory(0)).ReturnsLazily(() => { ApiCost.Apply(ApiOp.BlockGetInventory); return inventory; });
             A.CallTo(() => block.GetInventory(A<int>.That.Matches(i => i != 0))).Returns(null);
             A.CallTo(() => block.GetOwnerFactionTag()).Returns("FACTION");
             A.CallTo(() => block.IsWorking).Returns(true);

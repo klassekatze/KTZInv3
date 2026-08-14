@@ -107,6 +107,8 @@ namespace KTZInv3.Tests.TestUtilities
             // the no-op debug seam: DEBUGGING off + a fresh no-op diag per test
             IngameScript.Program.DEBUGGING = false;
             IngameScript.Program.diag = new IngameScript.Program.DiagBase();
+            // API cost model: off by default (only profiling tests enable it)
+            ApiCost.Reset();
             // the block loader APPENDS to these static lists and never clears
             // them — without a reset, later tests inherit earlier tests' blocks
             // (a stale empty p99 cargo would absorb transfers meant for the
