@@ -403,6 +403,10 @@ namespace IngameScript
 						categories.Clear();
 
 						if (ignoreBlockTypes.Contains(b.DefinitionDisplayNameText)) _locked();
+						// reactors are locked whenever the reactor manager owns
+						// fuel balancing: the sorter must never move fuel in or
+						// out of them, or it fights the ReactorMgr average.
+						if (MANAGE_REACTORS && b is IMyReactor) _locked();
 						//if (hiddenBlockTypes.Contains(b.DefinitionDisplayNameText)) _hidden();
 
 						if (!hidden)

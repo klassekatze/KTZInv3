@@ -24,6 +24,7 @@ namespace IngameScript
 			public void update()
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
+				if (!MANAGE_REACTORS) return;
 				if (_ticks % (60 * 3) != 0) return;
 				//if (!gInv.hasUpdatedOnce) return;
 
@@ -162,12 +163,21 @@ namespace IngameScript
 											var donorInv = Program.reactors[j].GetInventory();
 											var receiverInv = Program.reactors[i].GetInventory();
 
+											// cap by the receiver's free space, same as
+											// Inventory's expel/transfer: the game silently
+											// clamps a transfer to what fits, so book the
+											// amount that actually CAN fit up front.
+											var nfo = Inventory.getItemInfo(type);
+											MyFixedPoint maxAccept = (receiverInv.MaxVolume - receiverInv.CurrentVolume) * (MyFixedPoint)(1.0 / nfo.Volume);
+											if (!nfo.UsesFractions) maxAccept = MyFixedPoint.Floor(maxAccept + (MyFixedPoint)0.001);
+											if (transferAmount > maxAccept) transferAmount = maxAccept;
+
 											// FindItem instead of GetItemAt(0) on the donor to
 											// guarantee we grab the right fuel, just in case
 											// they have an unpulled empty casing or trash in slot 0
 											MyInventoryItem? donorItem = donorInv.FindItem(type);
 
-											if (donorItem.HasValue)
+											if (donorItem.HasValue && transferAmount > 0)
 											{
 												donorInv.TransferItemTo(receiverInv, donorItem.Value, transferAmount);
 
