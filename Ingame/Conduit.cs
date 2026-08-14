@@ -23,9 +23,12 @@ namespace IngameScript
 		public void conduitUpdate()
 		{
 			if (!MAKE_CONDUIT_PACKET || !gInv.hasUpdatedOnce) return;
-			if((_ticks - lpkttick) > 60*3 && conduit != null)
+			// cadence on `tick` (executed ticks only) - NOT `_ticks` (the
+			// sleep counter): a skip window advances _ticks without executing
+			// work, which would delay the heartbeat past its interval
+			if((tick - lpkttick) > 60*3 && conduit != null)
 			{
-				lpkttick = _ticks;
+				lpkttick = tick;
 				var pkt = BuildPacket();
 				if (pkt != lpkt)
 				{

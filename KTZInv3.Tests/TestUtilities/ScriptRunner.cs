@@ -107,6 +107,15 @@ namespace KTZInv3.Tests.TestUtilities
             // the no-op debug seam: DEBUGGING off + a fresh no-op diag per test
             IngameScript.Program.DEBUGGING = false;
             IngameScript.Program.diag = new IngameScript.Program.DiagBase();
+            // runtime-ms skip guard threshold back to the shipped default
+            IngameScript.Program.maxMsPerSETickReal = 0.05;
+            // JIT warmup OFF for tests: the ctor warmup runs 200 real tick
+            // bodies (boot + passes), which would advance tick/_ticks and boot
+            // state before every test - breaking deterministic per-test boot
+            // expectations. The warmup itself is covered by a dedicated test
+            // that enables it explicitly (JITWARMUP is cleared by the warmup's
+            // finally, so only the master switch needs resetting here).
+            IngameScript.Program.WARMUP_JIT = false;
             // API cost model: off by default (only profiling tests enable it)
             ApiCost.Reset();
             // the block loader APPENDS to these static lists and never clears

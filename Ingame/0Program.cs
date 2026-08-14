@@ -41,6 +41,32 @@ namespace IngameScript
 										//sorter, flushed) and the item is disassembled to learn the exact
 										//composition of the recipe, which is saved to the CD registry. When
 										//false the discovery controller is disabled.
+		static public bool WARMUP_JIT = true;//call the real tick body several times at the end of
+										//Program() so the JIT compiles the hot paths during
+										//construction - PBLimiter's per-tick budget does not apply
+										//to the ctor, so the compile stall is paid once at boot
+										//instead of on the first real tick that reaches each path.
+										//The instruction counter DOES run in the ctor: the warmup
+										//runs the real tick body up to JIT_WARMUP_TICKS times, each
+										//bounded by the same MaxInstructionCount guard the ticks
+										//use, so it stops when the ctor budget is spent. When false
+										//the warmup is skipped. Public so the test harness can
+										//disable it for deterministic per-test boot state.
+		static int JIT_WARMUP_TICKS = 200;//how many real tick bodies the ctor JIT warmup runs.
+										//Boot alone needs ~110 ticks (11 steps at tick%10), and
+										//after boot the inventory passes + manager updates are the
+										//heavy JIT surface - so 200 gets through boot AND into the
+										//real passes. The MaxInstructionCount check caps it in-game;
+										//in the harness the fake Runtime reports 0 instructions so
+										//the cap is the only bound (tests disable WARMUP_JIT anyway).
+										//The runtime-ms skip check is bypassed while warmup runs.
+		static bool JITWARMUP = false;//warmup mode: (a) disables the runtime-ms skip check
+										//(SkipCheck) so ctor ticks neither skip work nor pollute the
+										//rolling average that real ticks are judged against, and
+										//(b) stops the SLEEP counter (_ticks) from advancing - the
+										//warmup ticks are real work on `tick` but NOT scheduled
+										//ticks, so they must not shift the skip guard's window or
+										//hangTick debt. Set true by jitWarmup(), restored in finally.
 
 		//static bool ASM_FLUSH = false;//whether to periodically clear inputs of an assembler that is not producing
 		static bool ASM_SHUFFLE = false;//whether to periodically move the first item to back of queue if not producing
@@ -131,6 +157,56 @@ namespace IngameScript
 			log("BOOT", LT.LOG_N);
 			//Config = new Config_();
 			Runtime.UpdateFrequency = updateFrequency;// UpdateFrequency.Update1;//| */UpdateFrequency.Update10 | UpdateFrequency.Update100;
+
+			jitWarmup();
+		}
+
+		// ============================================================================
+		// JIT warmup.
+		//
+		// A freshly compiled script pays a JIT stall on the FIRST invocation of
+		// every method: the first real ticks after boot hit the compiler
+		// synchronously (JIT compiles a method's ENTIRE body on first call),
+		// causing visible hitches. The fix: run the REAL tick body a few times
+		// during the constructor, where PBLimiter's per-tick wall-clock budget
+		// does NOT apply (the ctor is not a scheduled run). The instruction
+		// counter DOES run in the ctor, so the warmup loop is bounded by the
+		// same MaxInstructionCount guard the ticks use - it simply stops when
+		// the budget for the ctor run is spent.
+		//
+		// WHY CALL MAIN() INSTEAD OF INDIVIDUAL METHODS: the per-tick paths are
+		// gated by conditionals (tick % 60, gInv.hasUpdatedOnce, refi counters,
+		// discovery state). Calling update() once would hit the gate and return,
+		// and a method that returns early never CALLS its callees, so those stay
+		// uncompiled. Running main() for real walks the actual gates: each
+		// tick advances the state machine (resourceLoader boot steps, inventory
+		// passes, manager updates), so by the second or third warmup tick the
+		// real hot paths have executed - and the JIT has compiled them and
+		// everything they call. Real work on real paths, no enumeration.
+		//
+		// The runtime-ms skip check (SkipCheck) is disabled during warmup:
+		// (a) the ctor is not a scheduled tick, so LastRunTimeMs is meaningless
+		// there, and (b) warmup ticks must not pollute the rolling average that
+		// the real ticks will be judged against.
+		// ============================================================================
+		static void jitWarmup()
+		{
+			if (!WARMUP_JIT) return;
+			JITWARMUP = true;
+			try
+			{
+				for (int i = 0; i < JIT_WARMUP_TICKS; i++)
+				{
+					// same budget guard the real ticks use: stop when the
+					// ctor's instruction budget is exhausted
+					if (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount) break;
+					gProgram.Main("", UpdateType.Update1);
+				}
+			}
+			finally
+			{
+				JITWARMUP = false;
+			}
 		}
 
 		// ---- budget trip guard ----
@@ -287,6 +363,13 @@ namespace IngameScript
 				// No matter what happened last tick (heavy run or instant skip), 
 				// log the exact truth reported by the game engine right now.
 				double l_time = Runtime.LastRunTimeMs;
+				if (JITWARMUP) return false; // ctor warmup: not a scheduled tick -
+											 // do not record into the rolling
+											 // average and never skip the warmup
+											 // ticks (their LastRunTimeMs is
+											 // meaningless; polluting the window
+											 // would trip the guard for the real
+											 // ticks that follow)
 				if (skipRecord)
 				{
 					int index = _ticks % _windowSize;
@@ -325,7 +408,15 @@ namespace IngameScript
 		{
 			get
 			{
-				if (updateType == UpdateType.Update1) _ticks++;
+				// _ticks is the SLEEP counter: it advances on every scheduled
+				// Update1 call, even ticks that SkipCheck then skips. The rest
+				// of the program's work cadence must NOT use it (see ReactorMgr
+				// and Conduit, which gate on `tick` - executed ticks only).
+				// During the ctor JIT warmup we run real tick bodies but those
+				// are not scheduled ticks: do not advance the sleep counter, so
+				// warmup can never shift the skip guard's rolling window or
+				// hangTick debt.
+				if (updateType == UpdateType.Update1 && !JITWARMUP) _ticks++;
 				//startTicks = DateTime.UtcNow.Ticks;
 				//startTime = DateTime.Now;
 				if (reportLastRun)

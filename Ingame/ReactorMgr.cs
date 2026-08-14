@@ -25,7 +25,11 @@ namespace IngameScript
 			{
 				{ var _ = (gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount || gProgram.Runtime.CurrentCallChainDepth > MaxCallChainDepth) ? TripExecution() : false; }
 				if (!MANAGE_REACTORS) return;
-				if (_ticks % (60 * 3) != 0) return;
+				// work cadence on `tick` (executed ticks only) - NOT `_ticks`
+				// (the sleep counter): a skip window advances _ticks past the
+				// modulo point without executing any work, which would skip
+				// the reactor balancing cycle entirely
+				if (tick % (60 * 3) != 0) return;
 				//if (!gInv.hasUpdatedOnce) return;
 
 				//if (gInv.updateCounter == curUpdate) return;//we only run this right after a full inventory update
