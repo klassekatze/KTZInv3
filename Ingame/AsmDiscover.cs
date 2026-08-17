@@ -64,6 +64,22 @@ namespace IngameScript
 			static MyAssemblerMode discModeBackup;
 			static List<MyProductionItem> discQueueBackup = null;
 
+			// copies of the discovery item present in the assembler's OUTPUT
+			// inventory when the run started. In Disassembly mode the OUTPUT
+			// is the functional feed inventory, so copies already sitting
+			// there are legitimate feedstock: the run completes when at
+			// least one of them has been consumed (extras are harmless and
+			// do not block completion).
+			static MyFixedPoint discOutBaseline = 0;
+
+			// items whose copy retrieval failed recently -> tick when the
+			// retry ban expires. A permanently unretrievable phantom (e.g.
+			// counted by the manifest but stuck inside the discovering
+			// assembler's own output, which no sourcing view reaches) must
+			// not restart discovery every second.
+			static Dictionary<MyDefinitionId, int> retrieveCooldown = new Dictionary<MyDefinitionId, int>();
+			const int RETRY_COOLDOWN_TICKS = 60 * 300;
+
 			// whether the given block is the assembler currently being used
 			// for discovery (checked by the sorter's updateP so the lock
 			// survives renames)
@@ -88,19 +104,18 @@ namespace IngameScript
 
 				if (discAssembler != null)
 				{
-					// disassembly completes when the item has been consumed
-					// from the OUTPUT inventory and the INPUT inventory
-					// gained ingredients (the game's FinishDisassembling
-					// removes the results from output, adds prerequisites to
-					// input). Note: in Disassembly mode the BlockInventory
-					// manifest view is input-only, so we read the item's
-					// presence directly from the output inventory.
+					// disassembly completes when at least one copy has been
+					// consumed from the OUTPUT feed inventory (below the
+					// baseline taken at start). Extras beyond the baseline
+					// (items that arrived mid-run) are harmless and do not
+					// block completion; the game's UpdateDisassembleMode
+					// pulls exactly the queued amount.
 					bool itemGone = true;
 					List<MyInventoryItem> outNow = new List<MyInventoryItem>();
 					discAssembler.OutputInventory.GetItems(outNow);
 					foreach (var o in outNow)
 					{
-						if (o.Type == (MyItemType)discItem && o.Amount > 0) { itemGone = false; break; }
+						if (o.Type == (MyItemType)discItem && o.Amount >= discOutBaseline) { itemGone = false; break; }
 					}
 
 					if (itemGone && inputGained())
@@ -123,45 +138,50 @@ namespace IngameScript
 			}
 
 			// whether the assembler's INPUT contains anything beyond the
-			// post-flush baseline (the ingredients produced by disassembly)
-			static bool inputGained()
+		// post-flush baseline (the ingredients produced by disassembly)
+		static bool inputGained()
+		{
+			List<MyInventoryItem> now = new List<MyInventoryItem>();
+			discAssembler.InputInventory.GetItems(now);
+			if (inBaseline == null) return now.Count > 0;
+			// per-type comparison against the baseline
+			foreach (var n in now)
 			{
-				List<MyInventoryItem> now = new List<MyInventoryItem>();
-				discAssembler.InputInventory.GetItems(now);
-				if (inBaseline == null) return now.Count > 0;
-				// per-type comparison against the baseline
-				foreach (var n in now)
+				MyFixedPoint b = 0;
+				foreach (var o in inBaseline)
 				{
-					MyFixedPoint b = 0;
-					foreach (var o in inBaseline)
-					{
-						if (o.Type == n.Type) { b = o.Amount; break; }
-					}
-					if (n.Amount > b) return true;
+					if (o.Type == n.Type) { b = o.Amount; break; }
 				}
-				return false;
+				if (n.Amount > b) return true;
 			}
+			return false;
+		}
 
-			void startNextDiscovery()
+		void startNextDiscovery()
+		{
+			int cooldownUntil;
+			foreach (var kvp in Autocraft.blueprints)
 			{
-				foreach (var kvp in Autocraft.blueprints)
+				var item = kvp.Key;
+				var bp = kvp.Value;
+				if (AsmLearn.knowsRecipe((MyItemType)item)) continue;
+				// retrieval failed for this item recently: skip until
+				// the cooldown expires so a permanently unretrievable
+				// phantom cannot restart discovery every second
+				if (retrieveCooldown.TryGetValue(item, out cooldownUntil) && tick < cooldownUntil) continue;
+				MyFixedPoint amt = 0;
+				Inventory.globalManifest.stuff.TryGetValue((MyItemType)item, out amt);
+				if (amt < (MyFixedPoint)1) continue;
+				foreach (var a in Program.assemblers)
 				{
-					var item = kvp.Key;
-					var bp = kvp.Value;
-					if (AsmLearn.knowsRecipe((MyItemType)item)) continue;
-					MyFixedPoint amt = 0;
-					Inventory.globalManifest.stuff.TryGetValue((MyItemType)item, out amt);
-					if (amt < (MyFixedPoint)1) continue;
-					foreach (var a in Program.assemblers)
-					{
-						if (!a.Enabled) continue;
-						if (isDiscovering(a)) continue;
-						if (!a.CanUseBlueprint(bp)) continue;
-						start(a, item, bp);
-						return;
-					}
+					if (!a.Enabled) continue;
+					if (isDiscovering(a)) continue;
+					if (!a.CanUseBlueprint(bp)) continue;
+					start(a, item, bp);
+					return;
 				}
 			}
+		}
 
 			void start(IMyAssembler a, MyDefinitionId item, MyDefinitionId bp)
 			{
@@ -170,6 +190,7 @@ namespace IngameScript
 				discBlueprint = bp;
 				discStartTick = tick;
 				inBaseline = null;
+				discOutBaseline = 0;
 
 				var bi = Inventory.BlockInventory.getBI(a);
 
@@ -191,44 +212,70 @@ namespace IngameScript
 				// from the output and produces its ingredients into the input
 				a.Mode = MyAssemblerMode.Disassembly;
 
-				// flush input and output so the observation starts clean
-				var items = new List<MyInventoryItem>();
-				a.InputInventory.GetItems(items);
-				foreach (var it in items) Inventory.expel(bi, it.Type, it.Amount, true);
-				items.Clear();
-				a.OutputInventory.GetItems(items);
-				foreach (var it in items) Inventory.expel(bi, it.Type, it.Amount, false);
+				// flush the INPUT only, so the composition observation starts
+				// clean. NOTE the bool is NOT "inputs=true": in Disassembly
+				// mode getSortedInventories(false) returns the NoOutput list
+				// (= the INPUT inventory) while true returns BOTH sides -
+				// which would try to expel the feedstock copies sitting in
+				// the OUTPUT (and fail loudly: "nowhere else to store"),
+				// exactly what the first live deploy showed. The OUTPUT is
+				// deliberately NOT flushed: it is the functional feed
+				// inventory of disassembly, and copies of the discovery
+				// item already there are legitimate feedstock (see the
+				// retrieval below).
+				var flushItems = new List<MyInventoryItem>();
+				a.InputInventory.GetItems(flushItems);
+				foreach (var it in flushItems) Inventory.expel(bi, it.Type, it.Amount, false);
 
-				// stuff exactly one copy of the item into the OUTPUT
-				// inventory: that is where the game looks for the item being
-				// disassembled (decompiled UpdateDisassembleMode pulls it
-				// there). UseConveyorSystem is off, so we place it ourselves.
-				// Done with the low-level raw transfer, not the BlockInventory
-				// boolean overload: in Disassembly mode the inv system's
-				// inventory view treats the INPUT as the product side
-				// (getSortedInventories(false) -> sortedInventoriesNoOutput =
-				// input), so the booleans would route the transfer into the
-				// wrong inventory. expel (flush) above stays in the inv
-				// system; only the targeted stuffing goes direct.
-				MyFixedPoint left = (MyFixedPoint)1;
-				foreach (var ibi in Inventory.BlockInventory.bPriorityList)
+				// count copies already in the OUTPUT inventory: in disassembly
+				// mode that is the functional feed inventory, so copies
+				// already there count toward the one we need. Only retrieve
+				// from the network when fewer than one copy is in place.
+				MyFixedPoint inPlace = 0;
+				var outItems = new List<MyInventoryItem>();
+				a.OutputInventory.GetItems(outItems);
+				foreach (var o in outItems)
 				{
-					MyFixedPoint available = 0;
-					if (ibi.manifest != null)
-						ibi.manifest.stuff.TryGetValue((MyItemType)item, out available);
-					if (available <= 0) continue;
-					foreach (var srcInv in ibi.getSortedInventories(true))
-					{
-						left = Inventory.transfer_item(srcInv, a.OutputInventory, (MyItemType)item, left);
-						if (left <= (MyFixedPoint)0.001d) break;
-					}
-					if (left <= (MyFixedPoint)0.001d) break;
+					if (o.Type == (MyItemType)item) inPlace += o.Amount;
 				}
+
+				MyFixedPoint left = (MyFixedPoint)1 - inPlace;
 				if (left > (MyFixedPoint)0.001d)
 				{
-					log("AsmDiscover: could not retrieve a copy of " + item.SubtypeId + " for " + a.CustomName, LT.LOG_N);
-					release(false);
-					return;
+					// retrieve the missing copy from the network into the
+					// OUTPUT inventory: that is where the game looks for the
+					// item being disassembled (decompiled
+					// UpdateDisassembleMode pulls it there).
+					// UseConveyorSystem is off, so we place it ourselves.
+					// Done with the low-level raw transfer, not the
+					// BlockInventory boolean overload: in Disassembly mode the
+					// inv system's inventory view treats the INPUT as the
+					// product side (getSortedInventories(false) ->
+					// sortedInventoriesNoOutput = input), so the booleans
+					// would route the transfer into the wrong inventory.
+					// expel (flush) above stays in the inv system; only the
+					// targeted stuffing goes direct.
+					foreach (var ibi in Inventory.BlockInventory.bPriorityList)
+					{
+						MyFixedPoint available = 0;
+						if (ibi.manifest != null) ibi.manifest.stuff.TryGetValue((MyItemType)item, out available);
+						if (available <= 0) continue;
+						foreach (var srcInv in ibi.getSortedInventories(true))
+						{
+							left = Inventory.transfer_item(srcInv, a.OutputInventory, (MyItemType)item, left);
+							if (left <= (MyFixedPoint)0.001d) break;
+						}
+						if (left <= (MyFixedPoint)0.001d) break;
+					}
+					if (left > (MyFixedPoint)0.001d)
+					{
+						log("AsmDiscover: could not retrieve a copy of " + item.SubtypeId + " for " + a.CustomName, LT.LOG_N);
+						// ban this item for a while instead of restarting
+						// the run (and re-corrupting the queue) every second
+						retrieveCooldown[item] = tick + RETRY_COOLDOWN_TICKS;
+						release(false);
+						return;
+					}
 				}
 
 				// queue the disassembly: POSITIVE amount (the game's queue
@@ -237,13 +284,20 @@ namespace IngameScript
 				a.ClearQueue();
 				a.AddQueueItem(bp, (MyFixedPoint)1);
 
-				// snapshot the (now flushed) INPUT as the composition baseline
+				// baselines: the composition comes from the input delta, and
+				// completion is measured against the output copy count taken
+				// AFTER stuffing (>= baseline means not yet consumed)
 				inBaseline = new List<MyInventoryItem>();
 				a.InputInventory.GetItems(inBaseline);
+				outItems.Clear();
+				a.OutputInventory.GetItems(outItems);
+				foreach (var o in outItems)
+				{
+					if (o.Type == (MyItemType)item) discOutBaseline = o.Amount;
+				}
 
 				log("AsmDiscover: disassembling 1x " + item.SubtypeId + " in " + a.CustomName, LT.LOG_N);
 			}
-
 			void release(bool learned)
 			{
 				var a = discAssembler;
@@ -261,12 +315,24 @@ namespace IngameScript
 				var bi = Inventory.BlockInventory.getBI(a);
 				bi.locked = false;
 
-				// put back what we cleared: the user's queue (jobs are
-				// re-added in their original order) and the assembler's mode.
-				// ClearQueue first so any residual discovery job can't linger
+				// put back what we changed: the assembler's mode. The queue
+				// needs NO manual restore: MyAssembler keeps TWO queues (one
+				// per mode, decompiled DisassembleEnabled setter ->
+				// SwapQueue(ref m_otherQueue)); switching to Disassembly
+				// stashed the assembly-side queue and switching back to
+				// Assembly re-materializes it exactly as it was. The old
+				// manual re-add stacked the backup ON TOP of that restored
+				// stash (game-side AddQueueItem MERGES same-bp rows by
+				// adding amounts) - that was the endless queue doubling.
+				// ClearQueue first so any residual discovery job can't
+				// linger; it only touches the currently-visible (disassembly)
+				// side, the stashed assembly side is untouched by it.
 				a.ClearQueue();
 				a.Mode = modeBackup;
-				if (queueBackup != null)
+				// EXCEPT when the user's backup mode was Disassembly: then
+				// our flip to Disassembly did NOT stash anything (same mode),
+				// so the queue we cleared WAS the user's - re-add it.
+				if (modeBackup == MyAssemblerMode.Disassembly && queueBackup != null)
 				{
 					foreach (var qi in queueBackup)
 					{

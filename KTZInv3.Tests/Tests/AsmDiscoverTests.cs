@@ -82,6 +82,8 @@ namespace KTZInv3.Tests.Tests
             adType.GetField("discAssembler", flags).SetValue(null, null);
             adType.GetField("inBaseline", flags).SetValue(null, null);
             adType.GetField("discQueueBackup", flags).SetValue(null, null);
+            adType.GetField("discOutBaseline", flags).SetValue(null, (MyFixedPoint)0);
+            adType.GetField("retrieveCooldown", flags).SetValue(null, new Dictionary<MyDefinitionId, int>());
             // RefLearn registry (same test process)
             var refLearnType = typeof(IngameScript.Program).GetNestedType("RefLearn", System.Reflection.BindingFlags.NonPublic);
             refLearnType.GetField("learned", flags).SetValue(null, new Dictionary<MyDefinitionId, Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>>());
@@ -101,15 +103,21 @@ namespace KTZInv3.Tests.Tests
         /// Mutable state captured behind the fake's setters, so tests can
         /// assert what the script set (mode, UseConveyorSystem) and what the
         /// queue looks like after ClearQueue/AddQueueItem/GetQueue.
+        /// Models the game's per-mode queues (decompiled MyAssembler:
+        /// the DisassembleEnabled setter calls SwapQueue(ref m_otherQueue)):
+        /// setting Mode swaps the visible queue with the stashed one, so a
+        /// mode round-trip preserves each side exactly.
         /// </summary>
         sealed class AsmState
         {
             public MyAssemblerMode Mode = MyAssemblerMode.Assembly;
             public bool UseConv = true;
-            public List<MyProductionItem> Queue = new List<MyProductionItem>();
+            public List<MyProductionItem> AssemblyQueue = new List<MyProductionItem>();
+            public List<MyProductionItem> DisassemblyQueue = new List<MyProductionItem>();
+            public List<MyProductionItem> Queue => Mode == MyAssemblerMode.Disassembly ? DisassemblyQueue : AssemblyQueue;
         }
 
-        /// <summary>An enabled assembler fake with captured setter state and a real queue.</summary>
+        /// <summary>An enabled assembler fake with captured setter state and per-mode queues.</summary>
         static (IMyAssembler asm, FakeInventory input, FakeInventory output, AsmState state) MakeAssembler()
         {
             var input = new FakeInventory((MyFixedPoint)5.0);
@@ -126,6 +134,8 @@ namespace KTZInv3.Tests.Tests
             A.CallTo(() => asm.IsQueueEmpty).ReturnsLazily(() => state.Queue.Count == 0);
             A.CallTo(() => asm.CanUseBlueprint(A<MyDefinitionId>.Ignored)).Returns(true);
             A.CallTo(() => asm.Mode).ReturnsLazily(() => state.Mode);
+            // setting Mode swaps the visible queue (per-mode queues), which
+            // the derived AsmState.Queue property models automatically
             A.CallToSet(() => asm.Mode).Invokes((MyAssemblerMode m) => state.Mode = m);
             A.CallTo(() => asm.UseConveyorSystem).ReturnsLazily(() => state.UseConv);
             A.CallToSet(() => asm.UseConveyorSystem).Invokes((bool v) => state.UseConv = v);
@@ -373,10 +383,14 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
 
             Assert.That(IsDiscovering(asm), Is.False);
-            // the user's jobs are back, in order, with their amounts, plus
-            // the automatic re-queue of 1 replacement (the discovery
-            // consumed one copy of the item to learn its composition)
-            Assert.That(state.Queue.Count, Is.EqualTo(3), "cleared queue jobs must be restored + 1 replacement re-queued");
+            // the user's jobs are back via the game's per-mode queue swap
+            // (mode restored to Assembly re-materializes the stashed
+            // assembly-side queue), plus the automatic re-queue of 1
+            // replacement (the discovery consumed one copy of the item to
+            // learn its composition). The manual re-add is GONE: stacking
+            // the backup on top of the auto-restored stash doubled the
+            // queue every cycle (the reported defect).
+            Assert.That(state.Queue.Count, Is.EqualTo(3), "stashed jobs must re-materialize on mode restore + 1 replacement re-queued");
             Assert.That(state.Queue[0].BlueprintId, Is.EqualTo(SteelPlateBp));
             Assert.That((double)state.Queue[0].Amount, Is.EqualTo(10.0));
             Assert.That(state.Queue[1].BlueprintId, Is.EqualTo(InteriorPlateBp));
@@ -385,6 +399,101 @@ namespace KTZInv3.Tests.Tests
                 "assembly of 1 replacement must be queued after a successful discovery");
             Assert.That((double)state.Queue[2].Amount, Is.EqualTo(1.0));
             Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "assembler mode must be restored");
+        }
+
+        [Test]
+        public void Release_FailedRetrieval_DoesNotDoubleQueue_AndCoolsDown()
+        {
+            // Regression: the reported "endless doubling of craft orders".
+            // A permanently unretrievable item (only copies counted by the
+            // manifest sit inside the discovering assembler's own output,
+            // which no sourcing view reaches) must (a) not corrupt the
+            // queue on release and (b) not restart discovery every second.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+
+            // the user's assembly job, amount 100
+            state.Queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)100));
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            // phantom: the manifest says 1 steel plate exists, but no
+            // physical copy is anywhere retrievable (simulate by putting
+            // the manifest count without any physical items)
+            IngameScript.Program.Inventory.globalManifest.stuff[SteelPlate] = (MyFixedPoint)1;
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.False, "failed retrieval must release the assembler");
+            Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "mode must be restored");
+            Assert.That(state.Queue.Count, Is.EqualTo(1), "the user's queue must re-materialize exactly once (no doubling)");
+            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(100.0), "the re-materialized amount must be the original, not doubled");
+
+            // cooldown: a second scan one second later must NOT restart
+            Update(discover);
+            IngameScript.Program.tick += 60;
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.False, "cooldown must ban the unretrievable item for a while");
+        }
+
+        [Test]
+        public void Start_CopiesAlreadyInOutput_CountAsFeedstock()
+        {
+            // the user's observation: in disassembly mode the OUTPUT is the
+            // functional feed inventory. Copies already inside it must be
+            // used as feedstock instead of triggering a doomed retrieval.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+            // 3 copies stranded in the assembler's OUTPUT (how the old
+            // no-op output flush left SolarCells there)
+            output.AddItem(SteelPlate, (MyFixedPoint)3);
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            var discover = MakeDiscover();
+            Update(discover);
+
+            Assert.That(IsDiscovering(asm), Is.True, "in-place copies must satisfy the feedstock requirement");
+            Assert.That(state.Queue.Count, Is.EqualTo(1), "disassembly queued");
+            Assert.That((double)output.AmountOf(SteelPlate), Is.EqualTo(3.0), "in-place copies are kept, not flushed");
+        }
+
+        [Test]
+        public void DisassemblyBackupMode_QueueReAddedManually()
+        {
+            // when the user's mode was Disassembly, the discovery's mode
+            // flip never stashed anything (same mode), so release() must
+            // re-add the cleared queue manually
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0, (SteelPlate, (MyFixedPoint)1));
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+
+            // user was in disassembly mode with a disassembly job queued
+            state.Mode = MyAssemblerMode.Disassembly;
+            state.Queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)4));
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.True);
+
+            // disassembly completes
+            output.Clear();
+            input.AddItem(IronIngot, (MyFixedPoint)7);
+            input.AddItem(GoldIngot, (MyFixedPoint)1);
+            RunTicks(120);
+            Update(discover);
+
+            Assert.That(IsDiscovering(asm), Is.False);
+            Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Disassembly), "disassembly mode restored");
+            Assert.That(state.Queue.Count, Is.EqualTo(1), "user's disassembly job re-added manually (no replacement in disassembly mode)");
+            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(4.0), "re-added at the original amount");
         }
 
         [Test]
