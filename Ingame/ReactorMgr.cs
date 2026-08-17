@@ -146,18 +146,36 @@ namespace IngameScript
 						MyFixedPoint average = (MyFixedPoint)((double)groupTotal / idxs.Count);
 						MyFixedPoint tolerance = REACTOR_BALANCING_MARGIN;
 
-						// receivers: fuel significantly below the group average
+						// receivers: fuel significantly below the group average.
+						// A reactor holding less than one fuel item is
+						// effectively empty (the tail of a spent rod) and is
+						// ALWAYS a receiver, even when the imbalance is below
+						// the margin: the balancer's primary purpose is
+						// redistributing fuel when one reactor took it all,
+						// and the absolute margin (REACTOR_BALANCING_MARGIN)
+						// would otherwise block that entirely whenever the
+						// grid total is below ~2x the margin (live: 30.88 vs
+						// 0.998 - avg 15.9, donor needs >40.9 -> nothing moves).
 						foreach (var i in idxs)
 						{
-							if (fuelCounts[i] < (average - tolerance) || fuelCounts[i] < (MyFixedPoint)0.01d)
+							bool effectivelyEmpty = fuelCounts[i] < (MyFixedPoint)1.0d;
+							if (effectivelyEmpty || fuelCounts[i] < (average - tolerance))
 							{
 								MyFixedPoint amountNeeded = average - fuelCounts[i];
 
-								// donors: same fuel type, significantly above average
+								// donors: same fuel type. When the receiver is
+								// effectively empty, any reactor above the
+								// average gives its surplus (imbalance is
+								// absolute, not margin-gated); otherwise the
+								// margin still applies so slight unevenness
+								// between fueled reactors doesn't churn fuel.
 								foreach (var j in idxs)
 								{
 									if (i == j) continue;
-									if (fuelCounts[j] > (average + tolerance))
+									bool isDonor = effectivelyEmpty
+										? fuelCounts[j] > average
+										: fuelCounts[j] > (average + tolerance);
+									if (isDonor)
 									{
 										MyFixedPoint amountAvailable = fuelCounts[j] - average;
 										MyFixedPoint transferAmount = MyFixedPoint.Min(amountNeeded, amountAvailable);

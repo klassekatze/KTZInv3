@@ -191,6 +191,61 @@ namespace KTZInv3.Tests.Tests
         }
 
         [Test]
+        public void EmptyReactor_ReceivesFuel_WhenDonorSurplusBelowMargin()
+        {
+            // one reactor has ALL the fuel (30), the other is empty. Group
+            // average = 15; the donor's surplus over average (15) is below
+            // REACTOR_BALANCING_MARGIN (25), so the donor check
+            // `fuelCounts[j] > average + tolerance` fails and NOTHING moves.
+            // The margin exists to suppress churn when fuel is spread around;
+            // it must NOT block the balancer's primary purpose: redistributing
+            // fuel when one reactor took it all. An empty reactor gets topped
+            // up regardless of the margin.
+            var a = MakeReactor((MyFixedPoint)1.0, Uranium);
+            var b = MakeReactor((MyFixedPoint)1.0, Uranium);
+            ((FakeInventory)a.GetInventory()).AddItem(Uranium, (MyFixedPoint)30);
+
+            Reactors().AddRange(new[] { a, b });
+            RunUpdate();
+
+            var aInv = (FakeInventory)a.GetInventory();
+            var bInv = (FakeInventory)b.GetInventory();
+            Assert.That((double)bInv.AmountOf(Uranium), Is.GreaterThan(0.0),
+                "empty reactor must receive fuel even when the donor surplus is below the margin");
+            Assert.That((double)aInv.AmountOf(Uranium) + (double)bInv.AmountOf(Uranium), Is.EqualTo(30.0).Within(0.001),
+                "fuel must be conserved");
+            Assert.That((double)bInv.AmountOf(Uranium), Is.LessThanOrEqualTo(15.01),
+                "donor must not be drained below the group average");
+        }
+
+        [Test]
+        public void NearEmptyReactor_ReceivesFuel_WhenImbalanceBelowMargin()
+        {
+            // live production numbers from the reactor scan: one reactor holds
+            // 30.88 fuel, the other 0.998 (a single almost-depleted rod).
+            // avg = 15.94, tolerance = 25 -> the receiver is not below
+            // avg-tolerance (-9) and the donor is not above avg+tolerance
+            // (40.9): with the absolute margin, redistribution can NEVER fire
+            // when the grid total is below 2x the margin. A reactor holding
+            // less than one unit of fuel is effectively empty and must be
+            // topped up from whichever reactor holds the bulk.
+            var a = MakeReactor((MyFixedPoint)1.0, Uranium);
+            var b = MakeReactor((MyFixedPoint)1.0, Uranium);
+            ((FakeInventory)a.GetInventory()).AddItem(Uranium, (MyFixedPoint)30.879415d);
+            ((FakeInventory)b.GetInventory()).AddItem(Uranium, (MyFixedPoint)0.998361d);
+
+            Reactors().AddRange(new[] { a, b });
+            RunUpdate();
+
+            var aInv = (FakeInventory)a.GetInventory();
+            var bInv = (FakeInventory)b.GetInventory();
+            Assert.That((double)bInv.AmountOf(Uranium), Is.GreaterThan(5.0),
+                "near-empty reactor must be topped up well beyond its single rod");
+            Assert.That((double)aInv.AmountOf(Uranium) + (double)bInv.AmountOf(Uranium),
+                Is.EqualTo(31.877776).Within(0.001), "fuel must be conserved");
+        }
+
+        [Test]
         public void ManageReactorsTrue_LocksReactorsInSorter()
         {
             // reactors must be locked (BlockInventory.locked) when reactor
