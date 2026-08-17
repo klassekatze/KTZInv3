@@ -236,6 +236,10 @@ namespace IngameScript
 					//bool blueprintValid = false;
 					foreach (var a in assemblers)
 					{
+						// discovery owns this assembler's queue and mode:
+						// it was skipped when `queues` was built above, so
+						// including it here would KeyNotFound at queues[asm]
+						if (AsmDiscover.isDiscovering(a)) continue;
 						if (a.Mode == m)
 						{
 							if (a.CanUseBlueprint(bp))

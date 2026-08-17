@@ -619,6 +619,48 @@ namespace KTZInv3.Tests.Tests
         }
 
         [Test]
+        public void BalanceAssemblers_SkipsDiscoveringAssembler_NoKeyNotFound()
+        {
+            // Regression: AssemblerMgr.balanceAssemblers(Disassembly, orders)
+            // built its `queues` dictionary skipping discovering assemblers
+            // (they own their queue/mode), but the `relevant_assemblers`
+            // collection loop did NOT skip them. A discovering assembler is
+            // in Disassembly mode, so when a Disassembly balance ran with an
+            // order the discovering assembler CanUseBlueprint'd, it landed in
+            // relevant_assemblers -> queues[asm] -> KeyNotFoundException.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (disc, discInput, discOutput, discState) = MakeAssembler();
+            var (plain, plainInput, plainOutput, plainState) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+            // feedstock present -> discovery starts, mode flips to Disassembly
+            discOutput.AddItem(SteelPlate, (MyFixedPoint)1);
+            // the other assembler is doing normal disassembly work
+            plainState.Mode = MyAssemblerMode.Disassembly;
+
+            SetAssemblers(new List<IMyAssembler> { disc, plain });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, disc, plain });
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(disc), Is.True, "precondition: discovery running on the first assembler");
+
+            // a disassembly order the discovering assembler also accepts
+            // (negative = disassembly direction, matching the callers)
+            var orders = new Dictionary<MyDefinitionId, MyFixedPoint> { [SteelPlateBp] = (MyFixedPoint)(-5) };
+            var mgr = typeof(IngameScript.Program).GetField("gAssemblerMgr",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).GetValue(null);
+            Assert.DoesNotThrow(() => mgr.GetType().GetMethod("balanceAssemblers").Invoke(mgr,
+                new object[] { MyAssemblerMode.Disassembly, orders }),
+                "balanceAssemblers must skip discovering assemblers, not KeyNotFound");
+
+            // discovery still owns the discovering assembler: its queue must
+            // hold exactly the discovery job, mode still Disassembly
+            Assert.That(IsDiscovering(disc), Is.True, "discovery must survive the balance");
+            Assert.That(discState.Queue.Count, Is.EqualTo(1), "discovery job untouched by the balance");
+            Assert.That(discState.Mode, Is.EqualTo(MyAssemblerMode.Disassembly));
+        }
+
+        [Test]
         public void AsmLearn_Registry_RoundTrips()
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
