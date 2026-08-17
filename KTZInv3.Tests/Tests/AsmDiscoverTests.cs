@@ -463,6 +463,53 @@ namespace KTZInv3.Tests.Tests
         }
 
         [Test]
+        public void DisassemblyCompletes_WithRemainderInOutput_LearnsPerUnitRecipe()
+        {
+            // production regression (user-forced repro): >1 copies of the
+            // item were already in the OUTPUT when discovery started; the
+            // assembler disassembles exactly 1, the remainder (5) stays.
+            // The OLD check (Amount > 0) could then never see "gone" -> the
+            // run timed out, restarted, and finally "learned" by summing
+            // every cell forced through in one window (an N-times recipe).
+            // The completion check must be baseline-relative: done when at
+            // least one copy was consumed below the post-stuffing baseline,
+            // and the learned composition must stay per-unit.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+            // 6 copies pre-seated in the OUTPUT, exactly like the live grid
+            output.AddItem(SteelPlate, (MyFixedPoint)6);
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.True, "in-place copies satisfy feedstock, discovery starts");
+            Assert.That((double)output.AmountOf(SteelPlate), Is.EqualTo(6.0), "copies kept as feedstock, not flushed");
+
+            // ONE copy consumed: 6 -> 5. The game's disassembly pulls only
+            // the queued amount (1), so the remainder stays in the output.
+            output.RemoveItem(SteelPlate, (MyFixedPoint)1);
+            input.AddItem(IronIngot, (MyFixedPoint)7);
+            input.AddItem(GoldIngot, (MyFixedPoint)1);
+            RunTicks(120);
+
+            Update(discover);
+
+            Assert.That(IsDiscovering(asm), Is.False, "must complete after ONE consumed copy despite 5 remaining");
+            Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "mode must be restored");
+            Assert.That(state.UseConv, Is.True, "UseConveyors must be restored");
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+            var known = (Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>)typeof(IngameScript.Program)
+                .GetNestedType("AsmLearn", System.Reflection.BindingFlags.NonPublic).GetField("known", flags).GetValue(null);
+            Assert.That(known.ContainsKey(SteelPlate), Is.True, "composition must be recorded");
+            Assert.That((double)known[SteelPlate][IronIngot], Is.EqualTo(7.0), "per-unit recipe, not 5x");
+            Assert.That((double)known[SteelPlate][GoldIngot], Is.EqualTo(1.0), "per-unit recipe, not 5x");
+            Assert.That(_program.Me.CustomData, Does.Contain("MyObjectBuilder_Component/SteelPlate;MyObjectBuilder_Ingot/Iron;7"), "per-unit line in registry");
+        }
+
+        [Test]
         public void DisassemblyBackupMode_QueueReAddedManually()
         {
             // when the user's mode was Disassembly, the discovery's mode

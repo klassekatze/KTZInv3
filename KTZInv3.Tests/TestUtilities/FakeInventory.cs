@@ -76,6 +76,23 @@ namespace KTZInv3.Tests.TestUtilities
             _items.Clear();
         }
 
+        /// <summary>Test helper: remove up to <paramref name="amount"/> of the type, like the game's disassembly consuming feedstock.</summary>
+        public void RemoveItem(MyItemType type, MyFixedPoint amount)
+        {
+            MyFixedPoint left = amount;
+            for (int i = _items.Count - 1; i >= 0 && left > 0; i--)
+            {
+                if (_items[i].Type != type) continue;
+                var take = _items[i].Amount < left ? _items[i].Amount : left;
+                var rest = _items[i].Amount - take;
+                if (rest > 0)
+                    _items[i] = new MyInventoryItem(type, _items[i].ItemId, rest);
+                else
+                    _items.RemoveAt(i);
+                left -= take;
+            }
+        }
+
         // -- IMyInventory -----------------------------------------------------
 
         public IMyEntity Owner => null;
