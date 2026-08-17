@@ -47,14 +47,9 @@ namespace IngameScript
 		/// </summary>
 		class AsmDiscover
 		{
-			// safety net: if the disassembly hasn't completed within this
-			// long, release the assembler instead of holding it forever
-			const int DISCOVER_TIMEOUT_TICKS = 60 * 60 * 10;
-
 			static IMyAssembler discAssembler = null;
 			static MyDefinitionId discItem; // item def (blueprints key)
 			static MyDefinitionId discBlueprint;
-			static int discStartTick = -1;
 			// input snapshot taken right after the flush, so the composition
 			// is the input DELTA (leftovers can't pollute it)
 			static List<MyInventoryItem> inBaseline = null;
@@ -63,14 +58,6 @@ namespace IngameScript
 			// several blueprints) and expects them to survive the discovery
 			static MyAssemblerMode discModeBackup;
 			static List<MyProductionItem> discQueueBackup = null;
-
-			// copies of the discovery item present in the assembler's OUTPUT
-			// inventory when the run started. In Disassembly mode the OUTPUT
-			// is the functional feed inventory, so copies already sitting
-			// there are legitimate feedstock: the run completes when at
-			// least one of them has been consumed (extras are harmless and
-			// do not block completion).
-			static MyFixedPoint discOutBaseline = 0;
 
 			// items whose copy retrieval failed recently -> tick when the
 			// retry ban expires. A permanently unretrievable phantom (e.g.
@@ -104,29 +91,40 @@ namespace IngameScript
 
 				if (discAssembler != null)
 				{
-					// disassembly completes when at least one copy has been
-					// consumed from the OUTPUT feed inventory (below the
-					// baseline taken at start). Extras beyond the baseline
-					// (items that arrived mid-run) are harmless and do not
-					// block completion; the game's UpdateDisassembleMode
-					// pulls exactly the queued amount.
-					bool itemGone = true;
+					// A discovery run is legitimate ONLY while the
+					// assembler actually has the disassembly job still in
+					// the queue (not finished) AND holds at least one copy
+					// of the item in its OutputInventory. The game only
+					// deducts the item when the disassembly completes, so
+					// a run in progress always satisfies BOTH conditions;
+					// the queue row disappearing IS the completion signal.
+					// If either condition is missing, the run is over:
+					// conclude the recipe from the ingredients the
+					// disassembly produced (input delta), or if nothing
+					// was produced, release the assembler. No timeout -
+					// the queue+inventory state is the only truth.
+					bool bpQueued = false;
+					List<MyProductionItem> qnow = new List<MyProductionItem>();
+					discAssembler.GetQueue(qnow);
+					foreach (var qi in qnow)
+					{
+						if (qi.BlueprintId == discBlueprint) { bpQueued = true; break; }
+					}
+
+					bool itemInOut = false;
 					List<MyInventoryItem> outNow = new List<MyInventoryItem>();
 					discAssembler.OutputInventory.GetItems(outNow);
 					foreach (var o in outNow)
 					{
-						if (o.Type == (MyItemType)discItem && o.Amount >= discOutBaseline) { itemGone = false; break; }
+						if (o.Type == (MyItemType)discItem && o.Amount > 0) { itemInOut = true; break; }
 					}
 
-					if (itemGone && inputGained())
-					{
-						release(true);
-					}
-					else if (tick - discStartTick > DISCOVER_TIMEOUT_TICKS)
-					{
-						log("AsmDiscover: giving up on " + discItem.SubtypeId + " in " + discAssembler.CustomName + " (no disassembly within timeout)", LT.LOG_N);
-						release(false);
-					}
+					if (bpQueued && itemInOut) return; // still legitimately running
+
+					// run is over: conclude from whatever the disassembly
+					// produced, otherwise just release
+					if (inputGained()) release(true);
+					else release(false);
 					return;
 				}
 
@@ -188,9 +186,7 @@ namespace IngameScript
 				discAssembler = a;
 				discItem = item;
 				discBlueprint = bp;
-				discStartTick = tick;
 				inBaseline = null;
-				discOutBaseline = 0;
 
 				var bi = Inventory.BlockInventory.getBI(a);
 
@@ -284,17 +280,9 @@ namespace IngameScript
 				a.ClearQueue();
 				a.AddQueueItem(bp, (MyFixedPoint)1);
 
-				// baselines: the composition comes from the input delta, and
-				// completion is measured against the output copy count taken
-				// AFTER stuffing (>= baseline means not yet consumed)
+				// baseline: the composition comes from the input delta
 				inBaseline = new List<MyInventoryItem>();
 				a.InputInventory.GetItems(inBaseline);
-				outItems.Clear();
-				a.OutputInventory.GetItems(outItems);
-				foreach (var o in outItems)
-				{
-					if (o.Type == (MyItemType)item) discOutBaseline = o.Amount;
-				}
 
 				log("AsmDiscover: disassembling 1x " + item.SubtypeId + " in " + a.CustomName, LT.LOG_N);
 			}

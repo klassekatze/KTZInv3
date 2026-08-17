@@ -82,7 +82,6 @@ namespace KTZInv3.Tests.Tests
             adType.GetField("discAssembler", flags).SetValue(null, null);
             adType.GetField("inBaseline", flags).SetValue(null, null);
             adType.GetField("discQueueBackup", flags).SetValue(null, null);
-            adType.GetField("discOutBaseline", flags).SetValue(null, (MyFixedPoint)0);
             adType.GetField("retrieveCooldown", flags).SetValue(null, new Dictionary<MyDefinitionId, int>());
             // RefLearn registry (same test process)
             var refLearnType = typeof(IngameScript.Program).GetNestedType("RefLearn", System.Reflection.BindingFlags.NonPublic);
@@ -327,9 +326,10 @@ namespace KTZInv3.Tests.Tests
             Update(discover);
             Assert.That(IsDiscovering(asm), Is.True);
 
-            // the disassembly completes: the item is consumed from the
-            // OUTPUT, the INPUT gained the exact ingredients (steel plate
-            // = 7 iron + 1 gold)
+            // the disassembly completes: the game consumes the queue row,
+            // deducts the item from the OUTPUT, and produces the exact
+            // ingredients into the INPUT (steel plate = 7 iron + 1 gold)
+            state.Queue.Clear();
             output.Clear();
             input.AddItem(IronIngot, (MyFixedPoint)7);
             input.AddItem(GoldIngot, (MyFixedPoint)1);
@@ -374,7 +374,9 @@ namespace KTZInv3.Tests.Tests
             Assert.That(state.Queue.Count, Is.EqualTo(1), "the discovery run clears the queue and queues only the disassembly");
             Assert.That((double)state.Queue[0].Amount, Is.EqualTo(1.0));
 
-            // the disassembly completes
+            // the disassembly completes (queue row consumed + item
+            // deducted + ingredients produced, all atomically by the game)
+            state.Queue.Clear();
             output.Clear();
             input.AddItem(IronIngot, (MyFixedPoint)7);
             input.AddItem(GoldIngot, (MyFixedPoint)1);
@@ -466,14 +468,15 @@ namespace KTZInv3.Tests.Tests
         public void DisassemblyCompletes_WithRemainderInOutput_LearnsPerUnitRecipe()
         {
             // production regression (user-forced repro): >1 copies of the
-            // item were already in the OUTPUT when discovery started; the
-            // assembler disassembles exactly 1, the remainder (5) stays.
-            // The OLD check (Amount > 0) could then never see "gone" -> the
-            // run timed out, restarted, and finally "learned" by summing
-            // every cell forced through in one window (an N-times recipe).
-            // The completion check must be baseline-relative: done when at
-            // least one copy was consumed below the post-stuffing baseline,
-            // and the learned composition must stay per-unit.
+            // item were already in the OUTPUT when discovery started. The
+            // game disassembles exactly what the queue row says, deducts
+            // items only at completion, and the remainder (5) stays in the
+            // output. Completion is signaled by the queue row disappearing
+            // (the game consumes it when the disassembly finishes), NOT by
+            // the output being emptied - the OLD check (Amount > 0) could
+            // never see "gone" and the run timed out, restarted, and
+            // finally "learned" by summing every cell forced through in
+            // one window (an N-times recipe).
             var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
             var (asm, input, output, state) = MakeAssembler();
             SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
@@ -488,8 +491,10 @@ namespace KTZInv3.Tests.Tests
             Assert.That(IsDiscovering(asm), Is.True, "in-place copies satisfy feedstock, discovery starts");
             Assert.That((double)output.AmountOf(SteelPlate), Is.EqualTo(6.0), "copies kept as feedstock, not flushed");
 
-            // ONE copy consumed: 6 -> 5. The game's disassembly pulls only
-            // the queued amount (1), so the remainder stays in the output.
+            // the disassembly of 1x completes: the queue row is consumed,
+            // ONE copy is deducted (6 -> 5), and the per-unit ingredients
+            // appear in the input. The remainder stays in the output.
+            state.Queue.Clear();
             output.RemoveItem(SteelPlate, (MyFixedPoint)1);
             input.AddItem(IronIngot, (MyFixedPoint)7);
             input.AddItem(GoldIngot, (MyFixedPoint)1);
@@ -497,7 +502,7 @@ namespace KTZInv3.Tests.Tests
 
             Update(discover);
 
-            Assert.That(IsDiscovering(asm), Is.False, "must complete after ONE consumed copy despite 5 remaining");
+            Assert.That(IsDiscovering(asm), Is.False, "must complete when the queue row is consumed despite 5 remaining");
             Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "mode must be restored");
             Assert.That(state.UseConv, Is.True, "UseConveyors must be restored");
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
@@ -507,6 +512,76 @@ namespace KTZInv3.Tests.Tests
             Assert.That((double)known[SteelPlate][IronIngot], Is.EqualTo(7.0), "per-unit recipe, not 5x");
             Assert.That((double)known[SteelPlate][GoldIngot], Is.EqualTo(1.0), "per-unit recipe, not 5x");
             Assert.That(_program.Me.CustomData, Does.Contain("MyObjectBuilder_Component/SteelPlate;MyObjectBuilder_Ingot/Iron;7"), "per-unit line in registry");
+        }
+
+        [Test]
+        public void DiscoveryReleases_WhenQueueRowConsumed_ButNoIngredients_NoTimeout()
+        {
+            // jam regression: the queue row disappears (job finished or
+            // cancelled) but the input gained NOTHING (e.g. the disassembly
+            // produced nothing usable, or the item was pulled). The old
+            // code held the assembler until a 10-minute timeout; the new
+            // rule releases IMMEDIATELY based on state: no queued blueprint
+            // -> run is over, and no ingredients -> release without learn.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+            // feedstock present, so the run starts normally
+            output.AddItem(SteelPlate, (MyFixedPoint)1);
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.True, "run must start");
+
+            // queue row vanishes (job done/cancelled) with NO ingredients
+            state.Queue.Clear();
+            // advance far beyond any imagined timeout - there is none
+            IngameScript.Program.tick += 60 * 60 * 60;
+
+            Update(discover);
+
+            Assert.That(IsDiscovering(asm), Is.False, "must release immediately, no timeout");
+            Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "mode must be restored");
+            Assert.That(state.UseConv, Is.True, "UseConveyors must be restored");
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static;
+            var known = (Dictionary<MyItemType, Dictionary<MyItemType, MyFixedPoint>>)typeof(IngameScript.Program)
+                .GetNestedType("AsmLearn", System.Reflection.BindingFlags.NonPublic).GetField("known", flags).GetValue(null);
+            Assert.That(known.ContainsKey(SteelPlate), Is.False, "nothing produced -> nothing learned");
+        }
+
+        [Test]
+        public void DiscoveryReleases_WhenItemGoneFromOutput_NoIngredients()
+        {
+            // jam regression: the feedstock disappears from the OUTPUT
+            // (pulled by something else) while the queue row still exists.
+            // The run can never complete -> release immediately instead of
+            // holding the assembler. No ingredients -> no learn.
+            var cargo = CargoFactory.CreateCargo("2 Cargo [Components].P999", (MyFixedPoint)10.0);
+            var (asm, input, output, state) = MakeAssembler();
+            SetBlueprints(new Dictionary<MyDefinitionId, MyDefinitionId> { [SteelPlateDef] = SteelPlateBp });
+            output.AddItem(SteelPlate, (MyFixedPoint)1);
+            // the user's assembly job, amount 100
+            state.Queue.Add(new MyProductionItem(0, SteelPlateBp, (MyFixedPoint)100));
+
+            SetAssemblers(new List<IMyAssembler> { asm });
+            RunPipelineAndScan(new List<IMyTerminalBlock> { cargo.Block, asm });
+
+            var discover = MakeDiscover();
+            Update(discover);
+            Assert.That(IsDiscovering(asm), Is.True, "run must start");
+
+            // feedstock yanked from the output mid-run
+            output.RemoveItem(SteelPlate, (MyFixedPoint)1);
+
+            Update(discover);
+
+            Assert.That(IsDiscovering(asm), Is.False, "item gone -> must release immediately");
+            Assert.That(state.Mode, Is.EqualTo(MyAssemblerMode.Assembly), "mode must be restored");
+            Assert.That(state.Queue.Count, Is.EqualTo(1), "stashed queue must re-materialize exactly once");
+            Assert.That((double)state.Queue[0].Amount, Is.EqualTo(100.0), "no doubling on the jam-release path");
         }
 
         [Test]
