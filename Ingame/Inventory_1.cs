@@ -921,49 +921,67 @@ namespace IngameScript
 			//transfers up to amount of type to dest from origin. returns how much of the amount couldn't be sent for whatever reason
 			static public MyFixedPoint transfer_item(IMyInventory origin, IMyInventory dest, MyItemType type, MyFixedPoint amount)
 			{
-				if(transTick != tick)
+				// Defense-in-depth: the game's conveyor engine can throw on a null endpoint
+				// (e.g. a block mid dock/undock) even when both inventories are valid.
+				// Any exception must NOT crash the script/run — treat it as "nothing
+				// moved" (return the full amount unchanged). PB whitelist: no return
+				// inside try/catch, so capture the original and restore on catch.
+				MyFixedPoint original = amount;
+				try
 				{
-					transTick = tick;
-					transMS = 0;
-				}
-				DateTime s=  DateTime.Now;
-				conveyor_error = false;
-				List<MyInventoryItem> itms = new List<MyInventoryItem>();
-				origin.GetItems(itms);
-				foreach (MyInventoryItem item in itms)
-				{
-					if (item.Type == type)
+					if(transTick != tick)
 					{
-						MyFixedPoint trns_amt = item.Amount > amount ? amount : item.Amount;
-	//IDBG.log("_transfer_item " + type.SubtypeId + " " + trns_amt);
-						var nfo = getItemInfo(type);
-						MyFixedPoint max_accept = ((dest.MaxVolume - dest.CurrentVolume) * (1f / nfo.Volume));
-						if(!nfo.UsesFractions) max_accept = MyFixedPoint.Floor(max_accept + (MyFixedPoint)0.001);
-
-						if (trns_amt > max_accept)
-						{
-	//IDBG.log("_capping amt to "+max_accept);
-							trns_amt = max_accept;
-						}
-						if (trns_amt > 0)
-						{
-							transfer_count++;
-							if (origin.TransferItemTo(dest, item, trns_amt))
-							{
-								amount -= trns_amt;
-	//IDBG.log("_successfully moved " + trns_amt + " of " + item.Type.SubtypeId);
-							}
-							else
-							{
-								bool conveyed = origin.CanTransferItemTo(dest, type);
-	//IDBG.log("_failed to move. checkset conveyor flag");
-								if (!conveyed) conveyor_error = true;
-							}
-						}
+						transTick = tick;
+						transMS = 0;
 					}
-					if (amount <= 0) break;
+					DateTime s=  DateTime.Now;
+					conveyor_error = false;
+					List<MyInventoryItem> itms = new List<MyInventoryItem>();
+					origin.GetItems(itms);
+					foreach (MyInventoryItem item in itms)
+					{
+						if (item.Type == type)
+						{
+							MyFixedPoint trns_amt = item.Amount > amount ? amount : item.Amount;
+		//IDBG.log("_transfer_item " + type.SubtypeId + " " + trns_amt);
+							var nfo = getItemInfo(type);
+							MyFixedPoint max_accept = ((dest.MaxVolume - dest.CurrentVolume) * (1f / nfo.Volume));
+							if(!nfo.UsesFractions) max_accept = MyFixedPoint.Floor(max_accept + (MyFixedPoint)0.001);
+
+							if (trns_amt > max_accept)
+							{
+		//IDBG.log("_capping amt to "+max_accept);
+								trns_amt = max_accept;
+							}
+							if (trns_amt > 0)
+							{
+								transfer_count++;
+								if (origin.TransferItemTo(dest, item, trns_amt))
+								{
+									amount -= trns_amt;
+		//IDBG.log("_successfully moved " + trns_amt + " of " + item.Type.SubtypeId);
+								}
+								else
+								{
+									bool conveyed = origin.CanTransferItemTo(dest, type);
+		//IDBG.log("_failed to move. checkset conveyor flag");
+									if (!conveyed) conveyor_error = true;
+								}
+							}
+						}
+						if (amount <= 0) break;
+					}
+					transMS += (DateTime.Now - s).TotalMilliseconds;
 				}
-				transMS += (DateTime.Now - s).TotalMilliseconds;
+				catch (Exception ex)
+				{
+					// Engine threw (often a null conveyor endpoint on a block being
+					// docked/undocked, or a transient game state). Don't crash; behave
+					// as if nothing was moved this pass. Retry next tick.
+					amount = original;
+					string err = "Warning: transfer exception (" + type.SubtypeId + "): " + ex.Message;
+					gInv.rerrlog(err.ToString());
+				}
 				return amount;
 			}
 
