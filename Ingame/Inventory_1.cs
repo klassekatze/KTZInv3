@@ -790,6 +790,12 @@ namespace IngameScript
 					{ var _ = gProgram.Runtime.CurrentInstructionCount > MaxInstructionCount ? TripExecution() : false; }
 					var inv = BlockInventory.bPriorityList[i];
 	//IDBG.set(dest, inv);
+					// skip locked sources: a special container's polite stock
+					// retrieval must never pull from blocks the sorter has
+					// locked (e.g. reactors under ReactorMgr fuel balancing —
+					// pulling their fuel would fight the manager). Forced
+					// retrieval (force_retrieve) intentionally ignores locks.
+					if (inv.locked) continue;
 					if (inv.manifest != null && inv.manifest.stuff.ContainsKey(t))
 					{
 
