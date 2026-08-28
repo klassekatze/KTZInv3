@@ -376,7 +376,7 @@ namespace IngameScript
 						var desired_amt = kvp.Value;
 						//var assembling_amt = production.ContainsKey(recipebp) ? production[recipebp] : 0;
 						MyFixedPoint current_amt = 0;
-						Inventory.globalManifest.stuff.TryGetValue((MyItemType)itembp, out current_amt);
+											Inventory.gridManifest.stuff.TryGetValue((MyItemType)itembp, out current_amt);
 
 						if (ASSEMBLE && current_amt + ASSEMBLE_MARGIN < desired_amt && (desired_amt - current_amt) != 0)
 						{

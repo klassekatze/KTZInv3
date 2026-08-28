@@ -124,7 +124,7 @@ namespace IngameScript
 				//p1.s();
 				Dictionary<string, int> avail = new Dictionary<string, int>();
 				
-				foreach(var kvp in Inventory.globalManifest.stuff)
+				foreach(var kvp in Inventory.gridManifest.stuff)
 				{
 					string subtype = kvp.Key.SubtypeId;//.Substring("MyObjectBuilder_".Length);//kvp.Key.SubtypeId.Replace("MyObjectBuilder_", "").Replace("_", " ");
 					if (!quotas.ContainsKey(subtype))

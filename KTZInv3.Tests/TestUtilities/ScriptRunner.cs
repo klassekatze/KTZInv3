@@ -96,6 +96,10 @@ namespace KTZInv3.Tests.TestUtilities
             IngameScript.Program.Inventory.globalManifest.maxVolume = 0;
             IngameScript.Program.Inventory.globalManifest.freeVolume = 0;
             IngameScript.Program.Inventory.globalManifest.typeVolume.Clear();
+            IngameScript.Program.Inventory.gridManifest.stuff.Clear();
+            IngameScript.Program.Inventory.gridManifest.maxVolume = 0;
+            IngameScript.Program.Inventory.gridManifest.freeVolume = 0;
+            IngameScript.Program.Inventory.gridManifest.typeVolume.Clear();
             IngameScript.Program.Inventory.encounteredTypes.Clear();
             IngameScript.Program.Inventory.nonFractionalMinMarginByCat.Clear();
             IngameScript.Program.Inventory.prAggs.Clear();

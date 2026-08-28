@@ -16,6 +16,7 @@ namespace IngameScript
 		public class Inventory
 		{
 			public static InventoryManifest globalManifest = new InventoryManifest();
+			public static InventoryManifest gridManifest = new InventoryManifest();
 			public static Dictionary<string, MyFixedPoint> nonFractionalMinMarginByCat = new Dictionary<string, MyFixedPoint>();
 			public static HashSet<MyItemType> encounteredTypes = new HashSet<MyItemType>();
 
@@ -592,6 +593,11 @@ namespace IngameScript
 					{
 						if (manifest != null) Inventory.globalManifest.sub(manifest);
 						Inventory.globalManifest.add(nm);
+						if (b.CubeGrid.EntityId == gProgram.Me.CubeGrid.EntityId)
+						{
+							if (manifest != null) Inventory.gridManifest.sub(manifest);
+							Inventory.gridManifest.add(nm);
+						}
 						manifest = nm;
 						//getPI(this.priority).update() dead: aggregate typeVolumeFree/categories
 						//are write-only; only the .bis membership (maintained in updateP) matters
@@ -1040,6 +1046,8 @@ namespace IngameScript
 				{
 					BlockInventory bi = BlockInventory.getBI(b);
 					Inventory.globalManifest.sub(bi.manifest);
+					if (b.CubeGrid.EntityId == gProgram.Me.CubeGrid.EntityId)
+						Inventory.gridManifest.sub(bi.manifest);
 				}
 				containers.Clear();
 
